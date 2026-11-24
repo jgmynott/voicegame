@@ -162,6 +162,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-o
 .overlay ul{margin:0;padding-left:20px;font-weight:600;display:flex;flex-direction:column;gap:6px}
 .tag{font-size:.65rem;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:0 4px;margin-left:4px;font-weight:900}
 #fx{position:fixed;inset:0;pointer-events:none;z-index:30;width:100%;height:100%}
+.code{font-family:var(--f-d);font-size:clamp(3.4rem,18vw,5rem);letter-spacing:.18em;line-height:1;color:var(--gold);text-shadow:0 6px 0 var(--gold-dk)}
+.dots{display:flex;gap:8px;justify-content:center}
+.dots i{width:12px;height:12px;border-radius:50%;background:#fff;opacity:.85;animation:bob 1s infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes bob{50%{transform:translateY(-8px);opacity:.4}}
+.pl{font-weight:900;font-size:1.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl.off{opacity:.45}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 
@@ -416,7 +423,7 @@ async function recordInto(key,btn,onDone){
   mr.onstop=async()=>{
     clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
     SFX.recOff(); buzz(20);
-    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await decode(await blob.arrayBuffer())); S.turn[key]=buf; onDone(buf); }
+    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await decode(await blob.arrayBuffer())); S.turn[key]=buf; onDone(buf,blob); }
     catch(e){ S.micError="Could not read that recording. Try again."; render(); }
   };
   mr.start(); activeRec=mr; recStart=Date.now();
@@ -441,6 +448,7 @@ const micHTML = (label,done) => `<div class="micwrap">
 const app=document.getElementById("app");
 const $=id=>document.getElementById(id);
 function topbar(){
+  if(S.screen==="online") return onlineTopbar();
   const inGame = !["title","setup"].includes(S.screen);
   const sc = inGame && pts() ? `<div class="scores"><span class="s sa ${S.turnTeam===0&&S.screen!=="final"?"on":""}" id="sc0">${S.teams[0].score}</span><span class="dim">:</span><span class="s sb ${S.turnTeam===1&&S.screen!=="final"?"on":""}" id="sc1">${S.teams[1].score}</span></div>`
     : inGame ? `<div class="chip">Casual · turn ${S.history.length+1}</div>` : "";
@@ -463,16 +471,17 @@ function menuHTML(){
     ${["title","setup"].includes(S.screen)?"":`<button class="btn ghost" id="quitBtn">${quitArmed?"Tap again to quit":"Quit game"}</button>`}</div>
   </div></div>`;
 }
+let KEEP_AUDIO=false;
 function render(){
-  stopPlay();
-  document.body.dataset.team = ["title","setup"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
+  if(!KEEP_AUDIO) stopPlay();
+  document.body.dataset.team = S.screen==="online" ? String(onlineTeamColor()) : ["title","setup"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
   const v=VIEWS[S.screen]();
   app.innerHTML = topbar() + `<section class="stage ${v.cls||""}">${v.html}</section>` + (S.menu?menuHTML():"");
   $("menuBtn").onclick=()=>{ SFX.tap(); S.menu=true; quitArmed=false; render(); };
   if(S.menu){
     $("closeMenu").onclick=()=>{ S.menu=false; render(); };
     $("muteBtn").onclick=()=>{ S.muted=!S.muted; saveSetup(); render(); };
-    const q=$("quitBtn"); if(q) q.onclick=()=>{ if(!quitArmed){ quitArmed=true; render(); return; } S.menu=false; S.screen="title"; render(); };
+    const q=$("quitBtn"); if(q) q.onclick=()=>{ if(!quitArmed){ quitArmed=true; render(); return; } S.menu=false; if(S.screen==="online") leaveRoom(); S.screen="title"; render(); };
   }
   v.bind && v.bind();
 }
@@ -496,8 +505,9 @@ const VIEWS = {
   title(){
     return { cls:"center", html:`<div class="title"><h1 class="huge">REVERSE</h1><h1 class="huge mirror" aria-hidden="true">REVERSE</h1></div>
       ${WORD_COUNT?`<span class="chip">${WORD_COUNT.toLocaleString()} words and phrases</span>`:""}<p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
-      <button class="btn" id="play">PLAY</button>`,
-      bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); }; } };
+      ${ONLINE_OK?`<button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
+      bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
+        if($("playOnline")) $("playOnline").onclick=()=>{ ac(); SFX.go(); O.err=""; go("online"); }; } };
   },
   setup(){
     const T=S.teams;
@@ -680,6 +690,288 @@ function finish(correct){
     if(pts()){ countUp($("sc"+t.team),before,S.teams[t.team].score); if(correct){ setTimeout(()=>{SFX.win();confetti();buzz(60);},150); } else setTimeout(()=>{SFX.lose();buzz([80,60,80]);},150); }
   },1500);
 }
+
+
+// ================= Online mode: every player on their own phone =================
+const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, mimic:false, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
+try{ O.pid = localStorage.getItem("rvg-pid") || ""; O.name = localStorage.getItem("rvg-name") || ""; }catch(e){}
+if(!O.pid){ O.pid = Math.random().toString(36).slice(2,12)+Date.now().toString(36); try{ localStorage.setItem("rvg-pid",O.pid); }catch(e){} }
+const ONLINE_OK = location.protocol.startsWith("http") && !/claudeusercontent|claude\.ai/.test(location.hostname);
+
+const ost = () => O.st;
+const oturn = () => O.st && O.st.turn;
+const oname = id => (O.st && O.st.players[id] && O.st.players[id].name) || "Someone";
+const omyTeam = () => O.st && O.st.players[O.pid] ? O.st.players[O.pid].team : 0;
+const opts = () => O.st && O.st.settings.mode === "points";
+const send = m => { try{ O.ws && O.ws.readyState===1 && O.ws.send(JSON.stringify(m)); }catch(e){} };
+function onlineTeamColor(){
+  const s=O.st; if(!s) return 0;
+  if(["lobby"].includes(s.phase)) return omyTeam();
+  if(s.phase==="pick") return 1-s.turn.team;
+  if(s.turn) return s.turn.team;
+  return omyTeam();
+}
+function newCode(){ const A="BCDFGHJKLMNPQRSTVWXZ"; let c=""; for(let i=0;i<4;i++) c+=A[Math.floor(Math.random()*A.length)]; return c; }
+
+function connect(code){
+  O.code = code; O.closed=false; O.err="";
+  try{ history.replaceState(null,"","?room="+code); }catch(e){}
+  const ws = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/api/room/"+code+"/ws?pid="+encodeURIComponent(O.pid));
+  O.ws = ws;
+  ws.onopen = ()=>{ O.retry=0; send({type:"hello", name:O.name}); };
+  ws.onmessage = ev => {
+    let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
+    if(m.type==="state"){ const prev=O.st; O.st=m.state; onState(prev); }
+    else if(m.type==="play"){ playGuesserClip(); }
+    else if(m.type==="error"){ O.err=m.message; orender(); }
+  };
+  ws.onclose = ()=>{ if(O.closed) return; O.retry++; setTimeout(()=>{ if(!O.closed) connect(O.code); }, Math.min(5000, 500*O.retry)); };
+}
+function leaveRoom(){ O.closed=true; try{ O.ws && O.ws.close(); }catch(e){} O.ws=null; O.st=null; O.clips={}; O.local={}; try{ history.replaceState(null,"",location.pathname); }catch(e){} }
+
+async function getClip(kind){
+  const key=kind+":"+O.st.clipVer;
+  if(O.clips[key]) return O.clips[key];
+  const r = await fetch("/api/room/"+O.code+"/clip/"+kind,{cache:"no-store"});
+  if(!r.ok) throw new Error("clip "+r.status);
+  const buf = trimBuf(await decode(await r.arrayBuffer()));
+  const v = {buf, rev:reverseBuf(buf)}; O.clips[key]=v; return v;
+}
+async function upload(kind, blob){
+  const r = await fetch("/api/room/"+O.code+"/clip/"+kind+"?pid="+encodeURIComponent(O.pid),{method:"PUT",body:blob,headers:{"Content-Type":blob.type||"audio/webm"}});
+  if(!r.ok) throw new Error("Upload failed ("+r.status+")");
+}
+async function playGuesserClip(){
+  try{ const c=await getClip("copy"); SFX.tap(); play(c.rev,()=>orender()); const b=$("pl"); if(b){ b.classList.add("spin"); b.disabled=true; } }
+  catch(e){ O.err="Couldn't load the clip. Check your connection."; orender(); }
+}
+
+// Re-render without cutting off audio or a recording in progress, and keep typing focus.
+let pendingRender=false;
+function orender(){
+  if(S.screen!=="online") return;
+  if(activeRec){ pendingRender=true; return; }
+  const f=document.activeElement, fid=f&&f.id, sel=f&&f.selectionStart;
+  KEEP_AUDIO=true; render(); KEEP_AUDIO=false;
+  if(fid){ const el=$(fid); if(el && el.tagName==="INPUT"){ el.focus(); try{ el.setSelectionRange(sel,sel); }catch(e){} } }
+}
+function onState(prev){
+  const s=O.st, t=s.turn;
+  // new turn: clear local recordings
+  if(!prev || !prev.turn || !t || prev.turn.n!==t.n){ O.local={}; O.mimic=false; O.pickDraft=""; O.guessDraft=""; }
+  if(prev && prev.phase!==s.phase){
+    if(s.phase==="bet"||s.phase==="pick") SFX.slam();
+    if(s.phase==="speak"||s.phase==="guess") SFX.whoosh();
+    if(s.phase==="guess" && t.guesserId===O.pid) buzz([40,40,40]);
+    if(s.phase==="final"){ SFX.fanfare(); setTimeout(()=>confetti(220),200); }
+  }
+  if(s.phase==="reveal" && t && O.lastReveal!==t.n && prev){
+    O.lastReveal=t.n; SFX.slam();
+    if(s.settings.mode==="points"){ if(t.correct){ setTimeout(()=>{SFX.win();confetti();buzz(60);},150); } else setTimeout(()=>{SFX.lose();buzz([80,60,80]);},150); }
+  }
+  if(s.phase==="guess" && t.guesserId===O.pid) getClip("copy").catch(()=>{});
+  if(s.phase==="reveal") { getClip("orig").catch(()=>{}); getClip("copy").catch(()=>{}); }
+  orender();
+}
+
+function onlineTopbar(){
+  const s=O.st;
+  const sc = !s ? "" : s.phase==="lobby" ? `<div class="chip">Room ${esc(O.code)}</div>`
+    : s.settings.mode==="points" ? `<div class="scores"><span class="s sa ${s.turnTeam===0?"on":""}">${s.scores[0]}</span><span class="dim">:</span><span class="s sb ${s.turnTeam===1?"on":""}">${s.scores[1]}</span></div>`
+    : `<div class="chip">Room ${esc(O.code)}</div>`;
+  return `<div class="bar"><div class="logo"><span>◀◀</span><span>REVERSE</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+}
+
+const av = (id,big) => `<div class="av" style="${big?"width:90px;height:90px;font-size:2.6rem":""}">${esc(oname(id).slice(0,1).toUpperCase())}</div>`;
+const waitCard = (title,sub,id) => `<div class="splash">${id?av(id,true):""}<h1 class="big-t">${title}</h1>${sub?`<p>${sub}</p>`:""}<div class="dots"><i></i><i></i><i></i></div></div>`;
+const errHTML = () => O.err?`<p class="err">${esc(O.err)}</p>`:"";
+
+VIEWS.online = function(){
+  const s=O.st;
+  if(!s) return O.code ? { cls:"center", html: waitCard("Joining "+esc(O.code)+"…","") } : onlineJoin();
+  const v = (ONLINE_VIEWS[s.phase]||ONLINE_VIEWS.lobby)();
+  const inner=v.bind;
+  v.bind=()=>{ document.body.dataset.team=String(onlineTeamColor()); inner&&inner(); };
+  return v;
+};
+
+function onlineJoin(){
+  const q = new URLSearchParams(location.search).get("room")||"";
+  return { cls:"center", html:`<h2 class="big-t">Play on your own phones</h2>
+    <p class="dim">One person creates a room. Everyone else joins with the code.</p>
+    <input class="inp" id="oname" maxlength="20" autocomplete="off" placeholder="Your name" value="${esc(O.name)}">
+    <button class="btn" id="create">CREATE ROOM</button>
+    <div class="row" style="width:100%"><input class="inp" id="ocode" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="CODE" value="${esc(q.toUpperCase())}" style="text-transform:uppercase;letter-spacing:.2em"><button class="btn team" id="join" style="flex:0 0 40%">JOIN</button></div>
+    ${errHTML()}<button class="link" id="back">Back</button>`,
+    bind(){
+      const nm=()=>{ const n=$("oname").value.trim(); if(!n){ O.err="Type your name first."; orender(); $("oname").focus(); return false; } O.name=n; try{ localStorage.setItem("rvg-name",n); }catch(e){} return true; };
+      $("create").onclick=()=>{ if(!nm()) return; ac(); ensureMic(); SFX.go(); connect(newCode()); orender(); };
+      $("join").onclick=()=>{ const c=$("ocode").value.trim().toUpperCase(); if(!nm()) return; if(!/^[A-Z]{4}$/.test(c)){ O.err="Room codes are 4 letters."; orender(); return; } ac(); ensureMic(); SFX.go(); connect(c); orender(); };
+      $("ocode").onkeydown=e=>{ if(e.key==="Enter") $("join").click(); };
+      $("back").onclick=()=>{ O.err=""; go("title"); };
+    } };
+}
+
+const ONLINE_VIEWS = {
+  lobby(){
+    const s=O.st, host=s.hostId===O.pid, link=location.origin+location.pathname+"?room="+O.code;
+    const col = t => `<div class="${t?"tB":"tA"}"><div class="row" style="align-items:center"><b class="d" style="font-size:1.3rem">${esc(s.teamNames[t])}</b></div>
+      ${s.order.filter(id=>s.players[id] && s.players[id].team===t).map(id=>`<div class="pl ${s.connected.includes(id)?"":"off"}">${esc(oname(id))}${id===s.hostId?" 👑":""}${id===O.pid?" (you)":""}</div>`).join("")||`<div class="dim">Nobody yet</div>`}
+      ${omyTeam()!==t?`<button class="btn ghost" data-team="${t}" style="font-size:.95rem;padding:10px">Join ${esc(s.teamNames[t])}</button>`:""}</div>`;
+    const st=s.settings, cats=[...CATS,"Mixed"];
+    const ready = [0,1].every(t=>s.order.filter(id=>s.players[id]&&s.players[id].team===t).length>=2);
+    return { html:`<div class="center" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <span class="kicker">Room code</span><div class="code">${esc(O.code)}</div>
+        <button class="btn ghost" id="share" style="width:auto;padding:10px 18px;font-size:1rem">📲 Invite players</button></div>
+      <div class="card"><div class="teamrow">${col(0)}${col(1)}</div></div>
+      ${host?`<div class="card">
+        <span class="lbl">Mode</span>${seg("mode",[["points","🏆 Points"],["casual","🎉 Casual"]],st.mode)}
+        <span class="lbl">Who picks the word</span>${seg("source",[["opponent","Other team"],["random","Random"]],st.source)}
+        <span class="lbl">Category</span>${seg("cat",cats.map(c=>[c,c]),st.category)}
+        <span class="lbl">Guesser hears the clip</span>${seg("gp",[[1,"1×"],[2,"2×"],[0,"∞"]],st.guesserPlays)}
+        ${st.mode==="points"?`<span class="lbl">Rounds</span>${seg("rounds",[[2,"2"],[4,"4"],[6,"6"],[8,"8"]],st.rounds)}`:""}</div>
+        ${errHTML()}<button class="btn" id="start" ${ready?"":"disabled"}>${ready?"START GAME":"NEED 2 PER TEAM"}</button>`
+      :`<div class="card center"><p class="dim">${esc(oname(s.hostId))} is setting up: ${st.mode==="points"?"Points":"Casual"} · ${esc(st.category)} · ${st.source==="opponent"?"other team picks":"random words"}</p></div>${waitCard("Waiting for the host","")}`}`,
+      bind(){
+        document.querySelectorAll("[data-team]").forEach(b=>b.onclick=()=>{ SFX.tap(); send({type:"team",team:+b.dataset.team}); });
+        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"Reverse",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
+          try{ await navigator.clipboard.writeText(link); $("share").textContent="Link copied"; }catch(e){ $("share").textContent=link; } };
+        if(host){
+          const set=x=>send({type:"settings",settings:Object.assign({},st,x)});
+          const segb=(id,fn)=>$(id)&&$(id).querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); fn(b.dataset.v); });
+          segb("mode",v=>set({mode:v})); segb("source",v=>set({source:v})); segb("cat",v=>set({category:v})); segb("gp",v=>set({guesserPlays:+v})); segb("rounds",v=>set({rounds:+v}));
+          $("start").onclick=()=>{ ac(); SFX.go(); try{ navigator.wakeLock && navigator.wakeLock.request("screen").catch(()=>{}); }catch(e){} send({type:"start"}); };
+        }
+      } };
+  },
+  bet(){
+    const s=O.st, t=s.turn;
+    if(t.speakerId!==O.pid) return { cls:"center", html: waitCard(`${esc(oname(t.speakerId))} is placing a bet`, `${esc(s.teamNames[t.team])} team · ${esc(t.cat)}`, t.speakerId) };
+    const hues=["#3f5bd8","#6a3fd8","#a63fd0","#d03f9c","#e2445f","#f0632e"];
+    return { cls:"center", html:`<span class="kicker">You're the Speaker · ${esc(t.cat)}</span><h2 class="big-t">How big are you going?</h2>
+      <div class="bets">${[3,4,5,6,7,8].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>`,
+      bind(){ document.querySelectorAll(".bet").forEach(b=>b.onclick=()=>{ SFX.coin(); buzz(15); send({type:"bet",level:+b.dataset.l}); }); } };
+  },
+  pick(){
+    const s=O.st, t=s.turn, mine=omyTeam()!==t.team, n=O.pickDraft.trim()?estSyl(O.pickDraft):0;
+    if(!mine) return { cls:"center", html: waitCard(`${esc(s.teamNames[1-t.team])} is picking your word`, `${esc(t.cat)}${opts()?` · ${t.level} syllables`:""}`) };
+    return { cls:"center", html:`<div class="splash" style="padding:22px 18px"><span class="kicker" style="color:#fff">Your team picks</span>
+      <h1 class="big-t">Give ${esc(oname(t.speakerId))} a word</h1><p>A ${esc(single(t.cat))}${opts()?` with <b>${t.level} syllables</b>`:""}. ${esc(oname(t.guesserId))} has to guess it.</p></div>
+      <input class="inp" id="entry" autocomplete="off" autocapitalize="off" placeholder="Type it" value="${esc(O.pickDraft)}">
+      <div class="sylls" id="est">${n?Array.from({length:n},()=>"<i></i>").join("")+`<span class="dim" style="margin-left:6px">≈${n}${opts()&&n!==t.level?` (needs ${t.level})`:""}</span>`:""}</div>
+      <button class="btn" id="lock" ${O.pickDraft.trim()?"":"disabled"}>SEND IT</button>
+      <button class="btn ghost" id="rand">🎲 Surprise them</button>`,
+      bind(){
+        const e=$("entry"), l=$("lock");
+        e.oninput=()=>{ O.pickDraft=e.value; l.disabled=!e.value.trim(); const k=e.value.trim()?estSyl(e.value):0;
+          $("est").innerHTML=k?Array.from({length:k},()=>"<i></i>").join("")+`<span class="dim" style="margin-left:6px">≈${k}${opts()&&k!==t.level?` (needs ${t.level})`:""}</span>`:""; };
+        e.onkeydown=ev=>{ if(ev.key==="Enter" && e.value.trim()) l.click(); };
+        l.onclick=()=>{ SFX.slam(); send({type:"pick",word:O.pickDraft}); };
+        $("rand").onclick=()=>{ SFX.slam(); send({type:"pick",random:true}); };
+      } };
+  },
+  speak(){
+    const s=O.st, t=s.turn;
+    if(t.speakerId!==O.pid){
+      const sub = t.word ? `The word: <b>${esc(t.word)}</b>` : `${esc(oname(t.guesserId))}, get ready to guess.`;
+      const what = !t.clips.orig ? "is saying the word" : !t.clips.copy ? "is saying it backward" : "is about to send it";
+      return { cls:"center", html: waitCard(`${esc(oname(t.speakerId))} ${what}`, sub, t.speakerId) };
+    }
+    S.turn = O.local;
+    const L=O.local;
+    // Stage 1: say it
+    if(!t.clips.orig) return { cls:"center", html:`<span class="kicker">You're the Speaker · say it normally</span>
+      <div class="word">${esc(t.word)}</div>
+      ${opts()?`<div class="sylls">${"<i></i>".repeat(t.level)}</div>`:`<span class="chip">${esc(t.cat)}</span>`}
+      ${t.drawn?`<button class="btn ghost" id="shuffle" style="width:auto;padding:10px 18px">🔀 Shuffle</button>`:""}
+      ${micHTML(L.uploading?"Sending…":"Tap to record",false)}${errHTML()}`,
+      bind(){
+        if(t.drawn) $("shuffle").onclick=()=>{ SFX.whoosh(); buzz(15); send({type:"shuffle"}); };
+        const m=$("mic"); m.onclick=()=>recordInto("orig",m,async(buf,blob)=>{ L.origRev=reverseBuf(buf); L.uploading=true; orender();
+          try{ await upload("orig",blob); O.err=""; SFX.rewind(); }catch(e){ O.err=e.message; } L.uploading=false; orender(); });
+      } };
+    // Stage 2: listen backward (needs the reversed clip; reload-safe)
+    if(!L.origRev){ getClip("orig").then(c=>{ L.origRev=c.rev; orender(); }).catch(()=>{}); return { cls:"center", html: waitCard("Loading your clip…","") }; }
+    if(!t.clips.copy && !O.mimic) return { cls:"center", html:`<span class="kicker">Here it is backward</span><h2 class="big-t">Listen close</h2>
+      <button class="play" id="pl" ${t.sPlays?"":"disabled"} aria-label="Play backward">${ICON.rew}</button>
+      <div class="pips">${Array.from({length:s.settings.speakerPlays},(_,i)=>`<i class="${i<s.settings.speakerPlays-t.sPlays?"used":""}"></i>`).join("")}</div>
+      <p class="dim">${t.sPlays} listen${t.sPlays===1?"":"s"} left</p>
+      <button class="btn team" id="next" ${t.sPlays<s.settings.speakerPlays?"":"disabled"}>I'VE GOT IT</button>
+      <button class="link" id="redo">Redo my recording</button>`,
+      bind(){
+        const p=$("pl"); p.onclick=()=>{ if(!t.sPlays) return; buzz(15); send({type:"speakerListen"}); p.classList.add("spin"); p.disabled=true; play(L.origRev,()=>orender()); };
+        $("next").onclick=()=>{ O.mimic=true; SFX.whoosh(); orender(); };
+        $("redo").onclick=()=>{ O.mimic=false; L.origRev=null; send({type:"redoOrig"}); };
+      } };
+    // Stage 3: say it backward, then send
+    const done=t.clips.copy;
+    return { cls:"center", html:`<span class="kicker">From memory</span><h2 class="big-t">Now say it BACKWARD</h2>
+      ${micHTML(L.uploading?"Sending…":done?"Recorded! Tap to redo":"Tap to record",done)}
+      ${done?`<button class="btn team" id="send">SEND TO ${esc(oname(t.guesserId).toUpperCase())}</button>`:`<p class="dim">Copy the backward sounds as closely as you can.</p>`}${errHTML()}`,
+      bind(){
+        const m=$("mic"); m.onclick=()=>{ if(done && !activeRec) m.classList.remove("done");
+          recordInto("copy",m,async(buf,blob)=>{ L.uploading=true; orender(); try{ await upload("copy",blob); O.err=""; }catch(e){ O.err=e.message; } L.uploading=false; orender(); }); };
+        if(done) $("send").onclick=()=>{ SFX.go(); send({type:"send"}); };
+      } };
+  },
+  guess(){
+    const s=O.st, t=s.turn, lim=s.settings.guesserPlays, left=t.gPlays;
+    if(t.guesserId!==O.pid){
+      const sub = t.word ? `The word: <b>${esc(t.word)}</b>${t.guess?"":""}` : "Can you figure it out before they do?";
+      return { cls:"center", html: waitCard(`${esc(oname(t.guesserId))} is guessing`, sub, t.guesserId) };
+    }
+    return { cls:"center", html:`<span class="kicker">You're the Guesser · ${esc(t.cat)}${opts()?` · ${t.level} syllables`:""}</span><h2 class="big-t">What did ${esc(oname(t.speakerId))} say?</h2>
+      <button class="play" id="pl" ${!lim||left?"":"disabled"} aria-label="Play clip">${ICON.play}</button>
+      ${lim?`<div class="pips">${Array.from({length:lim},(_,i)=>`<i class="${i<lim-left?"used":""}"></i>`).join("")}</div><p class="dim">${left} listen${left===1?"":"s"} left</p>`:`<p class="dim">Listen as much as you want</p>`}
+      ${opts()?`<input class="inp" id="guess" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(O.guessDraft)}" ${t.heard?"":"disabled"}>
+        <button class="btn team" id="submit" ${t.heard?"":"disabled"}>FINAL ANSWER</button><button class="link" id="giveup" ${t.heard?"":"hidden"}>Give up</button>`
+      :`<button class="btn team" id="reveal" ${t.heard?"":"disabled"}>REVEAL IT</button>`}${errHTML()}`,
+      bind(){
+        $("pl").onclick=()=>{ ac(); send({type:"listen"}); };
+        if(opts()){
+          const g=$("guess"); g.oninput=()=>O.guessDraft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("submit").click(); };
+          $("submit").onclick=()=>{ if(!O.guessDraft.trim()){ g.focus(); return; } SFX.drum(); send({type:"guess",text:O.guessDraft}); };
+          $("giveup").onclick=()=>send({type:"giveup"});
+        } else $("reveal").onclick=()=>send({type:"reveal"});
+      } };
+  },
+  reveal(){
+    const s=O.st, t=s.turn, pts_=opts(), ok=t.correct, d=t.delta, last=pts_ && s.round>s.settings.rounds;
+    return { cls:"center"+(pts_&&!ok?" shake":""), html:`
+      ${pts_?`<div class="stamp ${ok?"good":"bad"}">${ok?"NAILED IT":t.guess?"NOPE":"GAVE UP"}</div>`:""}
+      <div class="word">${esc(t.word)}</div>
+      ${pts_&&t.guess?`<p class="dim">${esc(oname(t.guesserId))} guessed “${esc(t.guess)}”</p>`:""}
+      ${pts_?`<div class="delta ${ok?"good":"bad"}">${d>0?"+":"−"}${Math.abs(d)} <span style="font-size:1.1rem">${esc(s.teamNames[t.team])}</span></div>`
+        :`<div class="row" style="width:100%"><button class="btn ghost" id="gotIt">${t.correct===true?"✅ ":""}Got it</button><button class="btn ghost" id="missed">${t.correct===false?"❌ ":""}Missed</button></div>`}
+      <div class="card" style="width:100%;box-sizing:border-box"><span class="lbl">Hear the whole chain</span><div class="chain">
+        <button class="btn ghost" id="c1">1 · Original</button><button class="btn ghost" id="c2">2 · Backward</button>
+        <button class="btn ghost" id="c3">3 · Backward copy</button><button class="btn ghost" id="c4">4 · What ${esc(oname(t.guesserId))} heard</button></div>
+        ${pts_?`<button class="link" id="flip">${ok?"That's wrong, mark it a miss":"Close enough? Count it"}</button>`:""}</div>
+      <button class="btn" id="next">${last?"FINAL SCORES":"NEXT TURN"}</button>${!pts_?`<button class="link" id="end">End game</button>`:""}`,
+      bind(){
+        const pc=(k,rev)=>async()=>{ try{ const c=await getClip(k); play(rev?c.rev:c.buf); }catch(e){ O.err="Couldn't load that clip."; orender(); } };
+        $("c1").onclick=pc("orig",false); $("c2").onclick=pc("orig",true); $("c3").onclick=pc("copy",false); $("c4").onclick=pc("copy",true);
+        if(pts_) $("flip").onclick=()=>send({type:"mark",correct:!ok});
+        else { $("gotIt").onclick=()=>{ SFX.win(); confetti(80); send({type:"mark",correct:true}); }; $("missed").onclick=()=>{ SFX.lose(); send({type:"mark",correct:false}); }; $("end").onclick=()=>send({type:"end"}); }
+        $("next").onclick=()=>{ SFX.tap(); send({type:"next"}); };
+      } };
+  },
+  final(){
+    const s=O.st, [A,B]=s.scores, tie=A===B, wi=A>B?0:1, pts_=opts(), host=s.hostId===O.pid;
+    const tally=i=>s.history.filter(h=>h.team===i && h.ok).length;
+    return { cls:"center", html:`<div class="splash"><div style="font-size:4rem;line-height:1">🏆</div>
+      <h1 class="huge">${pts_?(tie?"IT'S A TIE":esc(s.teamNames[wi])+" WINS"):"GG!"}</h1>
+      <p class="d" style="font-size:1.6rem">${pts_?`${A} : ${B}`:`${esc(s.teamNames[0])} ${tally(0)} · ${esc(s.teamNames[1])} ${tally(1)}`}</p></div>
+      ${host?`<button class="btn" id="again">REMATCH</button><button class="btn ghost" id="lobby">Back to lobby</button>`:`<p class="dim">Waiting for ${esc(oname(s.hostId))} to start a rematch</p>`}
+      <div class="card" style="width:100%;box-sizing:border-box;text-align:left"><span class="lbl">Every turn</span>
+      ${s.history.map(h=>`<p>${esc(s.teamNames[h.team])} · <b>${esc(h.word)}</b> <span class="dim">${esc(h.speaker||"")} → ${esc(h.guesser||"")}</span> ${pts_?`<span style="color:${h.d>0?"var(--good)":"var(--bad)"}">${h.d>0?"+":"−"}${Math.abs(h.d)}</span>`:(h.ok===true?"✅":h.ok===false?"❌":"")}</p>`).join("")||`<p class="dim">No turns played.</p>`}</div>`,
+      bind(){ if(host){ $("again").onclick=()=>send({type:"start"}); $("lobby").onclick=()=>send({type:"lobby"}); } } };
+  }
+};
+
+// Auto-open the join screen from an invite link
+{ const rc=(new URLSearchParams(location.search).get("room")||"").toUpperCase();
+  if(rc && ONLINE_OK){ S.screen="online"; if(/^[A-Z]{4}$/.test(rc) && O.name) connect(rc); } }
 render();
 loadWords();
 
