@@ -316,12 +316,34 @@ const speaker = () => team().players[team().turns%2];
 const guesser = () => team().players[1-team().turns%2];
 const pts = () => S.mode==="points";
 const single = c => c==="Mixed"?"thing":c.toLowerCase().replace(/s$/,"");
-function drawWord(cat,level){
-  let list = BANK[cat].filter(([w,n])=>level==null || n===level), fellBack=false;
-  if(!list.length){ list = CATS.flatMap(c=>BANK[c]).filter(([w,n])=>n===level); fellBack=true; }
-  let pool=list.filter(([w])=>!S.used.has(w)); if(!pool.length) pool=list;
-  const [w,n]=pool[Math.floor(Math.random()*pool.length)]; S.used.add(w); return {word:w,syl:n,fellBack};
+// Shuffled decks per category+level, remembered on this device so draws don't repeat until a deck runs out
+let DECKS={}; try{ DECKS=JSON.parse(localStorage.getItem("rvg-decks")||"{}"); }catch(e){}
+function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function deckList(cat,level){ return BANK[cat].filter(([w,n])=>level==null || n===level); }
+function drawFrom(key,list){
+  let d=DECKS[key]; if(!d || d.n!==list.length || d.pos>=list.length) d=DECKS[key]={seed:(Math.random()*2**31)|0,pos:0,n:list.length};
+  const r=rng(d.seed), order=list.map((_,i)=>i);
+  for(let i=order.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+  const item=list[order[d.pos++]]; try{ localStorage.setItem("rvg-decks",JSON.stringify(DECKS)); }catch(e){}
+  return item;
 }
+function drawWord(cat,level){
+  let list=deckList(cat,level), key=cat+"|"+(level??"any"), fellBack=false;
+  if(!list.length){ list=CATS.flatMap(c=>deckList(c,level)); key="all|"+level; fellBack=true; }
+  const [w,n]=drawFrom(key,list); return {word:w,syl:n,fellBack,drawn:true};
+}
+async function loadWords(){
+  try{
+    const r=await fetch("words.json",{cache:"no-cache"}); if(!r.ok) return; const data=await r.json();
+    for(const k of Object.keys(BANK)) delete BANK[k];
+    for(const [cat,levels] of Object.entries(data)){ BANK[cat]=[]; for(const [n,arr] of Object.entries(levels)) for(const w of arr) BANK[cat].push([w,+n]); }
+    CATS.splice(0,CATS.length,...Object.keys(BANK));
+    WORD_COUNT=CATS.reduce((a,c)=>a+BANK[c].length,0);
+    if(!CATS.includes(S.category) && S.category!=="Mixed") S.category=CATS[0];
+    if(["title","setup"].includes(S.screen)) render();
+  }catch(e){}
+}
+let WORD_COUNT=0;
 const norm = s => s.toLowerCase().replace(/[’']/g,"").replace(/[^a-z0-9 ]+/g," ").replace(/\b(a|an|the)\b/g," ").replace(/\s+/g," ").trim();
 function lev(a,b){ const m=a.length,n=b.length; const d=Array.from({length:m+1},(_,i)=>[i]); for(let j=1;j<=n;j++) d[0][j]=j;
   for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return d[m][n]; }
@@ -473,7 +495,7 @@ function afterBet(){
 const VIEWS = {
   title(){
     return { cls:"center", html:`<div class="title"><h1 class="huge">REVERSE</h1><h1 class="huge mirror" aria-hidden="true">REVERSE</h1></div>
-      <p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
+      ${WORD_COUNT?`<span class="chip">${WORD_COUNT.toLocaleString()} words and phrases</span>`:""}<p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
       <button class="btn" id="play">PLAY</button>`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); }; } };
   },
@@ -550,8 +572,10 @@ const VIEWS = {
       <div class="word">${esc(t.word)}</div>
       ${pts()?`<div class="sylls">${"<i></i>".repeat(t.level)}</div>`:`<span class="chip">${esc(t.cat)}</span>`}
       ${t.fellBack?`<p class="dim">No ${t.level}-syllable ${esc(single(t.cat))} in the list, so this one is a bonus pick.</p>`:""}
+      ${t.drawn?`<button class="btn ghost" id="shuffle" style="width:auto;padding:10px 18px">🔀 Shuffle</button>`:""}
       ${micHTML("Tap to record",false)}`,
-      bind(){ const m=$("mic"); m.onclick=()=>recordInto("orig",m,buf=>{ t.origRev=reverseBuf(buf); t.sPlays=S.speakerPlays; t.copy=null; setTimeout(()=>go("listen","rewind"),250); }); } };
+      bind(){ if(t.drawn) $("shuffle").onclick=()=>{ Object.assign(t,drawWord(t.cat,pts()?t.level:null)); SFX.whoosh(); buzz(15); render(); };
+        const m=$("mic"); m.onclick=()=>recordInto("orig",m,buf=>{ t.origRev=reverseBuf(buf); t.sPlays=S.speakerPlays; t.copy=null; setTimeout(()=>go("listen","rewind"),250); }); } };
   },
   listen(){
     const t=S.turn;
@@ -657,6 +681,7 @@ function finish(correct){
   },1500);
 }
 render();
+loadWords();
 
 </script>
 <script>if("serviceWorker" in navigator) addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
