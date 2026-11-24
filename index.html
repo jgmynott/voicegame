@@ -1,0 +1,663 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#160d3b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Reverse">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
+</head><body>
+<title>Reverse Voice Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800;900&display=swap">
+<style>
+/* Layout: phone-first arcade stage. A thin score bar on top, one big action per screen, centered. Single dark game-show look by design. */
+:root{
+  --bg:#160d3b; --bg2:#22145c; --card:#2d1f73; --ink:#ffffff; --dim:#b8afe8; --line:#3d2d8c;
+  --a:#ff4f6d; --a-dk:#a8183a; --b:#2fc2ff; --b-dk:#0b6f9e;
+  --gold:#ffd23f; --gold-dk:#b88a00; --good:#3fe08a; --good-dk:#108a4a; --bad:#ff4545;
+  --paper:#fff7e6; --paper-ink:#1d1145;
+  --team:var(--a); --team-dk:var(--a-dk);
+  --f-d:"Lilita One","Arial Black",Impact,system-ui,sans-serif;
+  --f-b:"Nunito",system-ui,-apple-system,sans-serif;
+  color-scheme:dark;
+}
+body[data-team="1"]{--team:var(--b);--team-dk:var(--b-dk)}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(120% 70% at 50% -10%, color-mix(in srgb,var(--team) 38%,transparent) 0%, transparent 60%), var(--bg);
+  background-attachment:fixed;color:var(--ink);font-family:var(--f-b);font-weight:800;font-size:17px;line-height:1.35;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 24px;
+  -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;transition:background .4s}
+input{user-select:text;-webkit-user-select:text}
+.wrap{max-width:480px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+h1,h2,.d{font-family:var(--f-d);font-weight:400;margin:0;letter-spacing:.01em;text-wrap:balance}
+p{margin:0}
+.dim{color:var(--dim)}
+
+/* top bar */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0 10px}
+.logo{font-family:var(--f-d);font-size:1.05rem;display:flex;gap:6px;align-items:center}
+.logo .flip{display:inline-block;transform:scaleX(-1);color:var(--gold)}
+.scores{display:flex;align-items:center;gap:6px;font-family:var(--f-d);font-size:1.15rem;font-variant-numeric:tabular-nums}
+.scores .s{padding:3px 10px;border-radius:999px;min-width:2.4em;text-align:center}
+.scores .sa{background:var(--a)} .scores .sb{background:var(--b);color:#05253a}
+.scores .on{box-shadow:0 0 0 3px #fff}
+.iconbtn{width:40px;height:40px;border-radius:12px;border:none;background:var(--card);color:var(--ink);font-size:1.2rem;cursor:pointer;display:grid;place-items:center}
+
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding-block:8px;animation:enter .38s cubic-bezier(.2,1.4,.4,1)}
+@keyframes enter{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+.center{text-align:center;align-items:center}
+.kicker{font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:900}
+.huge{font-size:clamp(2.6rem,13vw,4rem);line-height:.95}
+.big-t{font-size:clamp(1.9rem,9vw,2.6rem);line-height:1}
+
+/* buttons: arcade 3D */
+.btn{font-family:var(--f-d);font-size:1.45rem;border:none;border-radius:20px;padding:18px 20px;cursor:pointer;width:100%;
+  background:var(--gold);color:var(--paper-ink);box-shadow:0 7px 0 var(--gold-dk);transform:translateY(0);transition:transform .06s, box-shadow .06s;letter-spacing:.02em}
+.btn:active{transform:translateY(5px);box-shadow:0 2px 0 var(--gold-dk)}
+.btn.team{background:var(--team);color:#fff;box-shadow:0 7px 0 var(--team-dk)}
+.btn.team:active{box-shadow:0 2px 0 var(--team-dk)}
+.btn.ghost{background:var(--card);color:var(--ink);box-shadow:0 6px 0 #170c47;font-size:1.1rem;padding:14px}
+.btn.ghost:active{box-shadow:0 2px 0 #170c47}
+.btn:disabled{opacity:.35;pointer-events:none}
+.link{background:none;border:none;color:var(--dim);font:900 .95rem var(--f-b);text-decoration:underline;cursor:pointer;padding:8px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.row{display:flex;gap:12px}
+.row>*{flex:1}
+
+/* mic */
+.micwrap{display:flex;flex-direction:column;align-items:center;gap:14px}
+.mic{--lvl:0;position:relative;width:min(58vw,210px);aspect-ratio:1;max-width:100%;border-radius:50%;border:none;cursor:pointer;color:#fff;
+  background:radial-gradient(circle at 35% 30%,#ff8196,#e3264a 60%,#b0102f);
+  box-shadow:0 10px 0 #7d0a22, 0 0 0 calc(8px + var(--lvl)*46px) color-mix(in srgb,var(--a) 28%,transparent);
+  display:grid;place-items:center;transition:box-shadow .08s, transform .1s}
+.mic:active{transform:translateY(5px);box-shadow:0 5px 0 #7d0a22, 0 0 0 8px color-mix(in srgb,var(--a) 28%,transparent)}
+.mic svg{width:38%;height:38%}
+.mic.rec{animation:throb 1s infinite}
+.mic.done{background:radial-gradient(circle at 35% 30%,#7af0b1,#22b866 60%,#0f7d43);box-shadow:0 10px 0 #0a5a30}
+.mic .ring{position:absolute;inset:-14px;border-radius:50%;pointer-events:none}
+@keyframes throb{50%{transform:scale(1.05)}}
+.miclabel{font-family:var(--f-d);font-size:1.4rem;letter-spacing:.03em}
+.timer{font-variant-numeric:tabular-nums;color:var(--dim);font-size:.95rem;height:1.2em}
+
+/* big play */
+.play{position:relative;width:min(52vw,190px);aspect-ratio:1;max-width:100%;border-radius:50%;border:none;cursor:pointer;color:#05253a;
+  background:radial-gradient(circle at 35% 30%,#8fe2ff,#2fc2ff 60%,#0b84bf);box-shadow:0 10px 0 #075a82;display:grid;place-items:center}
+.play:active{transform:translateY(5px);box-shadow:0 5px 0 #075a82}
+.play svg{width:40%;height:40%}
+.play.spin svg{animation:spin .8s linear infinite}
+.play:disabled{filter:grayscale(1);opacity:.45}
+@keyframes spin{to{transform:rotate(-360deg)}}
+.pips{display:flex;gap:10px;justify-content:center}
+.pips i{width:18px;height:18px;border-radius:50%;background:var(--b);box-shadow:0 0 12px var(--b);display:block}
+.pips i.used{background:var(--line);box-shadow:none}
+
+/* word card */
+.card{background:var(--card);border-radius:24px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.word{background:var(--paper);color:var(--paper-ink);border-radius:22px;padding:22px 18px;text-align:center;font-family:var(--f-d);
+  font-size:clamp(1.9rem,9vw,2.7rem);line-height:1.02;transform:rotate(-2deg);box-shadow:0 8px 0 rgba(0,0,0,.35);animation:flipin .55s cubic-bezier(.2,1.5,.4,1);word-break:break-word}
+@keyframes flipin{from{transform:rotateY(90deg) rotate(-2deg)}to{transform:rotate(-2deg)}}
+.sylls{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}
+.sylls i{width:14px;height:14px;border-radius:50%;background:var(--gold);display:block}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);border-radius:999px;padding:6px 14px;font-weight:900;font-size:.9rem}
+
+/* splash */
+.splash{background:var(--team);border-radius:30px;padding:34px 20px;text-align:center;box-shadow:0 10px 0 var(--team-dk);display:flex;flex-direction:column;gap:14px;align-items:center;animation:slam .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes slam{from{transform:scale(1.6) rotate(-6deg);opacity:0}to{transform:none;opacity:1}}
+.splash .huge{text-shadow:0 5px 0 rgba(0,0,0,.25)}
+.who{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.who div{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.av{width:62px;height:62px;border-radius:50%;background:rgba(255,255,255,.95);color:var(--team-dk);font-family:var(--f-d);font-size:1.8rem;display:grid;place-items:center}
+.who span{font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+.who b{font-size:1.05rem;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* bet board */
+.bets{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.bet{border:none;border-radius:20px;padding:16px 6px;cursor:pointer;color:#fff;font-family:var(--f-d);display:flex;flex-direction:column;align-items:center;gap:2px;
+  box-shadow:0 7px 0 rgba(0,0,0,.35);animation:enter .4s backwards}
+.bet:active{transform:translateY(5px);box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.bet .n{font-size:2.6rem;line-height:1}
+.bet .s{font-family:var(--f-b);font-size:.7rem;letter-spacing:.1em;opacity:.85}
+.bet .p{font-size:1.1rem;color:var(--gold)}
+.bet .m{font-family:var(--f-b);font-size:.75rem;opacity:.8}
+
+/* inputs */
+.inp{width:100%;box-sizing:border-box;font:900 1.35rem var(--f-b);padding:16px;border-radius:18px;border:3px solid var(--line);background:#120a33;color:#fff;text-align:center}
+.inp:focus{border-color:var(--gold);outline:none}
+.sm{font-size:1rem;padding:12px;text-align:left}
+
+/* reveal */
+.stamp{font-family:var(--f-d);font-size:clamp(2.6rem,13vw,3.6rem);padding:4px 18px;border:6px solid currentColor;border-radius:16px;transform:rotate(-8deg);animation:stamp .45s cubic-bezier(.2,1.8,.4,1) backwards;display:inline-block}
+.stamp.good{color:var(--good)} .stamp.bad{color:var(--bad)}
+@keyframes stamp{from{transform:scale(3) rotate(-8deg);opacity:0}to{transform:rotate(-8deg);opacity:1}}
+.delta{font-family:var(--f-d);font-size:3rem;animation:enter .5s .35s backwards}
+.delta.good{color:var(--good)} .delta.bad{color:var(--bad)}
+.drum{font-family:var(--f-d);font-size:2rem;animation:wobble .18s infinite}
+@keyframes wobble{50%{transform:scale(1.08) rotate(2deg)}}
+.shake{animation:shake .45s}
+@keyframes shake{20%,60%{transform:translateX(-12px)}40%,80%{transform:translateX(12px)}}
+.chain{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chain .btn{font-size:.95rem;padding:12px 8px}
+
+/* lobby */
+.title{text-align:center;padding:10px 0 4px}
+.title .huge{font-size:clamp(3rem,16vw,4.6rem)}
+.title .mirror{display:block;transform:scaleX(-1);color:var(--gold);text-shadow:0 5px 0 var(--gold-dk)}
+.seg{display:flex;flex-wrap:wrap;gap:8px}
+.seg button{font:900 .95rem var(--f-b);padding:10px 14px;border-radius:999px;border:none;background:#120a33;color:var(--dim);cursor:pointer}
+.seg button[aria-checked="true"]{background:var(--gold);color:var(--paper-ink)}
+.lbl{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:900}
+.teamrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tA{border-left:6px solid var(--a);padding-left:10px;display:flex;flex-direction:column;gap:8px}
+.tB{border-left:6px solid var(--b);padding-left:10px;display:flex;flex-direction:column;gap:8px}
+.err{color:var(--bad);text-align:center}
+
+/* overlay menu */
+.overlay{position:fixed;inset:0;background:rgba(10,5,30,.88);z-index:20;overflow:auto;
+  padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px))}
+.overlay .card{max-width:480px;margin:0 auto}
+.overlay ul{margin:0;padding-left:20px;font-weight:600;display:flex;flex-direction:column;gap:6px}
+.tag{font-size:.65rem;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:0 4px;margin-left:4px;font-weight:900}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:30;width:100%;height:100%}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<canvas id="fx"></canvas>
+<div class="wrap" id="app"></div>
+
+<script>
+// ---------- Word bank: [phrase, syllables] by category ----------
+const BANK = {
+  Places:[
+    ["Canada",3],["Mexico",3],["Chicago",3],["Las Vegas",3],["Kentucky",3],["Hollywood",3],["Amsterdam",3],["Mount Rushmore",3],["Grand Canyon",3],["Jacksonville",3],
+    ["Argentina",4],["Minnesota",4],["Oklahoma",4],["Mississippi",4],["Sacramento",4],["Kalamazoo",4],["Tallahassee",4],["Cincinnati",4],["New York City",4],["Machu Picchu",4],["Easter Island",4],["Mount Everest",4],["Salt Lake City",4],["Golden Gate Bridge",4],
+    ["Philadelphia",5],["Minneapolis",5],["Mount Kilimanjaro",5],["Niagara Falls",5],["Copacabana",5],["Washington D.C.",5],["Great Wall of China",5],["Buckingham Palace",5],["Sahara Desert",5],["Pacific Ocean",5],["Constantinople",5],
+    ["Indianapolis",6],["Rio de Janeiro",6],["Statue of Liberty",6],["Empire State Building",6],["Hollywood Boulevard",6],["Galapagos Islands",6],["Amazon rainforest",6],["Mississippi River",6],["Oklahoma City",6],["Las Vegas Nevada",6],["the Great Barrier Reef",6],
+    ["Albuquerque New Mexico",7],["Honolulu Hawaii",7],["Cincinnati Ohio",7],["Tallahassee Florida",7],["Kalamazoo Michigan",7],["Mediterranean Sea",7],["Yellowstone National Park",7],["Grand Canyon National Park",7],["Buckingham Palace London",7],["Disney World in Orlando",7],
+    ["Mississippi River Delta",8],["Rio de Janeiro Brazil",8],["Golden Gate Bridge San Francisco",8],["the Mediterranean Sea",8],["Indianapolis Speedway",8]
+  ],
+  Animals:[
+    ["kangaroo",3],["octopus",3],["porcupine",3],["butterfly",3],["dinosaur",3],["buffalo",3],["elephant",3],["gorilla",3],["flamingo",3],["jellyfish",3],["chimpanzee",3],["iguana",3],["crocodile",3],["mosquito",3],
+    ["alligator",4],["rhinoceros",4],["salamander",4],["caterpillar",4],["armadillo",4],["orangutan",4],["tarantula",4],["barracuda",4],["anaconda",4],["pterodactyl",4],["German shepherd",4],["praying mantis",4],["giant panda",4],
+    ["hippopotamus",5],["tyrannosaurus",5],["velociraptor",5],["brachiosaurus",5],["Komodo dragon",5],["golden retriever",5],["duck-billed platypus",5],["emperor penguin",5],["black widow spider",5],
+    ["Tasmanian devil",6],["Siberian tiger",6],["tyrannosaurus rex",6],["Labrador retriever",6],["Galapagos tortoise",6],["African elephant",6],["velociraptor egg",6],["brachiosaurus neck",6],
+    ["golden retriever puppy",7],["Siberian husky dog",7],["Tasmanian devil cub",7],["African bush elephant",7],["tyrannosaurus rex tooth",7],["Galapagos sea turtle",7],
+    ["Siberian husky puppy",8],["Labrador retriever puppy",8],["duck-billed platypus family",8],["Galapagos giant tortoise",8],["brachiosaurus skeleton",8]
+  ],
+  Food:[
+    ["spaghetti",3],["pineapple",3],["lemonade",3],["cinnamon",3],["banana",3],["burrito",3],["potato",3],["tomato",3],["broccoli",3],["hamburger",3],["popsicle",3],
+    ["watermelon",4],["avocado",4],["macaroni",4],["pepperoni",4],["cappuccino",4],["jalapeno",4],["peanut butter",4],["mashed potatoes",4],["corn on the cob",4],["cinnamon roll",4],["tomato soup",4],["cotton candy",4],["hot fudge sundae",4],
+    ["avocado toast",5],["strawberry shortcake",5],["blueberry pancakes",5],["potato salad",5],["chicken noodle soup",5],["barbecue chicken",5],["strawberry milkshake",5],["watermelon seed",5],
+    ["macaroni salad",6],["pepperoni pizza",6],["banana split sundae",6],["spaghetti and meatballs",6],["macaroni and cheese",6],["jalapeno poppers",6],["cotton candy machine",6],["watermelon smoothie",6],
+    ["peanut butter and jelly",7],["pineapple upside-down cake",7],["pepperoni pizza slice",7],["spaghetti and meatball sub",7],["barbecue chicken pizza",7],["cinnamon raisin bagel",7],["strawberry shortcake with cream",7],
+    ["strawberry banana smoothie",8],["blueberry pancakes with syrup",8],["jalapeno cheddar biscuit",8],["macaroni and cheese with ham",8]
+  ],
+  Things:[
+    ["ambulance",3],["telescope",3],["umbrella",3],["volcano",3],["tornado",3],["piano",3],["computer",3],["bicycle",3],["calendar",3],["trampoline",3],["microwave",3],
+    ["helicopter",4],["thermometer",4],["escalator",4],["harmonica",4],["calculator",4],["hot air balloon",4],["motorcycle",4],["television",4],["binoculars",4],["accordion",4],
+    ["refrigerator",5],["roller coaster ride",5],["magic carpet ride",5],["vacuum cleaner",5],["electric guitar",5],["television set",5],["remote control car",5],["microwave oven",5],["electric toothbrush",5],["hot air balloon ride",5],
+    ["refrigerator door",6],["motorcycle helmet",6],["vacuum cleaner bag",6],["television remote",6],["microwave popcorn bag",6],
+    ["electric guitar solo",7],["refrigerator magnet",7],["helicopter landing pad",7],["motorcycle helmet strap",7],["calculator battery",7],["electric toothbrush charger",7],
+    ["television remote control",8],["vacuum cleaner attachment",8],["remote control helicopter",8]
+  ],
+  Sayings:[
+    ["break a leg",3],["spill the beans",3],["hit the road",3],["cold feet",2],
+    ["piece of cake",4],["on the fence",3],["call it a day",4],["cut to the chase",4],["hold your horses",4],
+    ["under the weather",5],["once in a blue moon",5],["practice makes perfect",5],["there's no place like home",5],["bite the bullet now",5],
+    ["hit the nail on the head",6],["the ball is in your court",6],["it takes two to tango",6],["a blessing in disguise",6],["barking up the wrong tree",6],["a penny for your thoughts",6],
+    ["the elephant in the room",7],["the grass is always greener",7],["let the cat out of the bag",7],["Rome wasn't built in a day",7],["all that glitters is not gold",7],["actions speak louder than words",7],["the early bird gets the worm",7],["the squeaky wheel gets the grease",7],
+    ["curiosity killed the cat",8],["don't judge a book by its cover",8],["the early bird catches the worm",8],["laughter is the best medicine",8],["biting off more than you can chew",8],["absence makes the heart grow fonder",8],["you can't teach an old dog new tricks",8]
+  ]
+};
+for(const c in BANK) BANK[c]=BANK[c].filter(([w,n])=>n>=3 && n<=8);
+const CATS = Object.keys(BANK);
+const PTS_PER_SYL = 10;
+const pointsFor = s => s * PTS_PER_SYL;
+const penaltyFor = s => Math.ceil(pointsFor(s) / 2);
+const MAX_REC_MS = 12000;
+
+// Rough syllable estimate for words the other team types in
+function estSyl(text){
+  return text.toLowerCase().replace(/[^a-z ]/g," ").split(/\s+/).filter(Boolean).reduce((n,w)=>{
+    if(w.length<=3) return n+1;
+    w=w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/,"").replace(/^y/,"");
+    const m=w.match(/[aeiouy]{1,2}/g); return n+Math.max(1,m?m.length:1);
+  },0);
+}
+
+// ---------- Audio ----------
+let actx = null, stream = null, playing = null, micBlocked = false;
+function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==="suspended") actx.resume(); return actx; }
+function decode(ab){ return new Promise((res,rej)=>ac().decodeAudioData(ab,res,rej)); }
+function stopPlay(){ if(playing){ const p=playing; playing=null; try{p.stop()}catch(e){} } }
+function play(buf,onEnd){
+  stopPlay(); const c=ac(); const s=c.createBufferSource(); s.buffer=buf; s.connect(c.destination);
+  s.onended=()=>{ if(playing===s){ playing=null; onEnd&&onEnd(); } }; s.start(); playing=s;
+}
+function reverseBuf(buf){
+  const out=ac().createBuffer(buf.numberOfChannels,buf.length,buf.sampleRate);
+  for(let ch=0;ch<buf.numberOfChannels;ch++){ const a=buf.getChannelData(ch), b=out.getChannelData(ch), n=a.length; for(let i=0;i<n;i++) b[i]=a[n-1-i]; }
+  return out;
+}
+function trimBuf(buf){
+  const d=buf.getChannelData(0); let peak=0; for(let i=0;i<d.length;i++){ const v=Math.abs(d[i]); if(v>peak) peak=v; }
+  const th=Math.max(0.015,peak*0.06); let st=0, en=d.length-1;
+  while(st<d.length && Math.abs(d[st])<th) st++;
+  while(en>st && Math.abs(d[en])<th) en--;
+  const pad=Math.floor(buf.sampleRate*0.08); st=Math.max(0,st-pad); en=Math.min(d.length-1,en+pad);
+  if(en-st < buf.sampleRate*0.2) return buf;
+  const out=ac().createBuffer(buf.numberOfChannels,en-st+1,buf.sampleRate);
+  for(let ch=0;ch<buf.numberOfChannels;ch++) out.getChannelData(ch).set(buf.getChannelData(ch).subarray(st,en+1));
+  return out;
+}
+async function getStream(){
+  if(stream && stream.active) return stream;
+  stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  return stream;
+}
+let activeRec=null;
+async function startRec(onDone,onFail){
+  ac();
+  try{
+    const s=await getStream(); const chunks=[]; const mr=new MediaRecorder(s);
+    mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+    mr.onstop=async()=>{
+      clearTimeout(mr._t); activeRec=null;
+      try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}); const buf=await decode(await blob.arrayBuffer()); onDone(trimBuf(buf)); }
+      catch(e){ onFail("Could not read that recording. Try again."); }
+    };
+    mr.start(); mr._t=setTimeout(()=>{ if(mr.state==="recording") mr.stop(); },MAX_REC_MS);
+    activeRec=mr; return true;
+  }catch(e){ micBlocked=true; onFail(null); return false; }
+}
+function stopRec(){ if(activeRec && activeRec.state==="recording") activeRec.stop(); }
+async function fileToBuf(file){ ac(); return trimBuf(await decode(await file.arrayBuffer())); }
+
+function drawWave(canvas,buf,color){
+  const dpr=window.devicePixelRatio||1, w=canvas.clientWidth, h=canvas.clientHeight;
+  canvas.width=w*dpr; canvas.height=h*dpr; const g=canvas.getContext("2d"); g.scale(dpr,dpr);
+  const d=buf.getChannelData(0), bars=Math.max(20,Math.floor(w/4)), step=Math.floor(d.length/bars)||1;
+  let max=0; const vals=[];
+  for(let i=0;i<bars;i++){ let m=0; for(let j=i*step;j<(i+1)*step && j<d.length;j+=4){ const v=Math.abs(d[j]); if(v>m) m=v; } vals.push(m); if(m>max) max=m; }
+  g.fillStyle=color;
+  vals.forEach((v,i)=>{ const bh=Math.max(2,(v/(max||1))*(h-12)); g.fillRect(i*(w/bars)+1,(h-bh)/2,Math.max(1,w/bars-2),bh); });
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+
+// ================= Game UI =================
+const REC_LIMIT = 10000;
+const ICON = {
+  mic:`<svg viewBox="0 0 24 24" fill="currentColor"><rect x="8" y="2" width="8" height="13" rx="4"/><path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M12 18v4M8 22h8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+  stop:`<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>`,
+  check:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6"/></svg>`,
+  rew:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 5v14L2 12zM22 5v14l-9-7z"/></svg>`,
+  play:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>`,
+  menu:"☰"
+};
+
+// ---------- settings + state ----------
+const S = {
+  screen:"title",
+  teams:[{name:"Red",players:["Player 1","Player 2"],score:0,turns:0},{name:"Blue",players:["Player 3","Player 4"],score:0,turns:0}],
+  mode:"points", source:"opponent", category:"Places", guesserPlays:2, speakerPlays:2, rounds:4,
+  round:1, turnTeam:0, used:new Set(), turn:null, history:[], menu:false, muted:false, micError:""
+};
+try{ const saved=JSON.parse(localStorage.getItem("rvg-setup")||"null"); if(saved) Object.assign(S,saved); }catch(e){}
+function saveSetup(){ try{ localStorage.setItem("rvg-setup",JSON.stringify({teams:S.teams.map(t=>({name:t.name,players:t.players,score:0,turns:0})),mode:S.mode,source:S.source,category:S.category,guesserPlays:S.guesserPlays,rounds:S.rounds,muted:S.muted})); }catch(e){} }
+
+const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const team = () => S.teams[S.turnTeam];
+const opp = () => S.teams[1-S.turnTeam];
+const speaker = () => team().players[team().turns%2];
+const guesser = () => team().players[1-team().turns%2];
+const pts = () => S.mode==="points";
+const single = c => c==="Mixed"?"thing":c.toLowerCase().replace(/s$/,"");
+function drawWord(cat,level){
+  let list = BANK[cat].filter(([w,n])=>level==null || n===level), fellBack=false;
+  if(!list.length){ list = CATS.flatMap(c=>BANK[c]).filter(([w,n])=>n===level); fellBack=true; }
+  let pool=list.filter(([w])=>!S.used.has(w)); if(!pool.length) pool=list;
+  const [w,n]=pool[Math.floor(Math.random()*pool.length)]; S.used.add(w); return {word:w,syl:n,fellBack};
+}
+const norm = s => s.toLowerCase().replace(/[’']/g,"").replace(/[^a-z0-9 ]+/g," ").replace(/\b(a|an|the)\b/g," ").replace(/\s+/g," ").trim();
+function lev(a,b){ const m=a.length,n=b.length; const d=Array.from({length:m+1},(_,i)=>[i]); for(let j=1;j<=n;j++) d[0][j]=j;
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return d[m][n]; }
+function judge(guess,answer){ const g=norm(guess), a=norm(answer); if(!g) return false; if(g===a || g.replace(/ /g,"")===a.replace(/ /g,"")) return true; return lev(g,a) <= Math.max(1,Math.floor(a.length/10)); }
+
+// ---------- sound effects ----------
+function tone(f,dur,type="sine",vol=.15,when=0,to){
+  if(S.muted) return; const c=ac(), t=c.currentTime+when, o=c.createOscillator(), g=c.createGain();
+  o.type=type; o.frequency.setValueAtTime(f,t); if(to) o.frequency.exponentialRampToValueAtTime(to,t+dur);
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.012); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+dur+.03);
+}
+let noiseBuf=null;
+function noise(dur,vol,when=0,f0=1000,f1){
+  if(S.muted) return; const c=ac();
+  if(!noiseBuf){ noiseBuf=c.createBuffer(1,c.sampleRate,c.sampleRate); const d=noiseBuf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+  const t=c.currentTime+when, s=c.createBufferSource(), f=c.createBiquadFilter(), g=c.createGain();
+  s.buffer=noiseBuf; f.type="bandpass"; f.Q.value=1.2; f.frequency.setValueAtTime(f0,t); if(f1) f.frequency.exponentialRampToValueAtTime(f1,t+dur);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  s.connect(f); f.connect(g); g.connect(c.destination); s.start(t); s.stop(t+dur+.02);
+}
+const SFX = {
+  tap(){ tone(660,.06,"square",.05) },
+  go(){ tone(523,.09,"triangle",.16); tone(784,.14,"triangle",.16,.08) },
+  recOn(){ tone(587,.07,"sine",.22); tone(1175,.1,"sine",.22,.07) },
+  recOff(){ tone(1175,.07,"sine",.2); tone(587,.12,"sine",.2,.07) },
+  rewind(){ tone(1600,.5,"sawtooth",.04,0,160); noise(.5,.12,0,4000,300) },
+  whoosh(){ noise(.28,.1,0,300,3000) },
+  slam(){ tone(110,.25,"square",.12,0,55); noise(.2,.25,0,200) },
+  coin(){ tone(988,.07,"square",.07); tone(1319,.25,"square",.07,.07) },
+  drum(){ let t=0; for(let i=0;i<16;i++){ noise(.06,.35,t,160); t+=Math.max(.04,.12-i*.006);} },
+  win(){ [523,659,784,1047,1319].forEach((f,i)=>tone(f,.3,"triangle",.17,i*.09)); noise(.6,.06,.45,6000) },
+  lose(){ tone(392,.32,"sawtooth",.08,0,370); tone(370,.32,"sawtooth",.08,.32,349); tone(349,.7,"sawtooth",.08,.64,262) },
+  fanfare(){ [392,523,659,784,659,784,1047].forEach((f,i)=>tone(f,.28,"square",.07,i*.13)) }
+};
+const buzz = ms => { try{ navigator.vibrate && navigator.vibrate(ms) }catch(e){} };
+
+// ---------- confetti ----------
+const fx=document.getElementById("fx"), fxg=fx.getContext("2d"); let parts=[], fxOn=false;
+function confetti(n=140){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const w=innerWidth, cols=["#ffd23f","#ff4f6d","#2fc2ff","#3fe08a","#ffffff","#b18cff"];
+  for(let i=0;i<n;i++) parts.push({x:w/2+(Math.random()-.5)*80,y:innerHeight*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*15-5,r:Math.random()*6+4,c:cols[i%cols.length],a:Math.random()*6,va:(Math.random()-.5)*.4,life:120+Math.random()*60});
+  if(!fxOn){ fxOn=true; requestAnimationFrame(tickFx); }
+}
+function tickFx(){
+  const dpr=devicePixelRatio||1; if(fx.width!==innerWidth*dpr){ fx.width=innerWidth*dpr; fx.height=innerHeight*dpr; }
+  fxg.setTransform(dpr,0,0,dpr,0,0); fxg.clearRect(0,0,innerWidth,innerHeight);
+  parts.forEach(p=>{ p.vy+=.45; p.vx*=.99; p.x+=p.vx; p.y+=p.vy; p.a+=p.va; p.life--; fxg.save(); fxg.translate(p.x,p.y); fxg.rotate(p.a); fxg.fillStyle=p.c; fxg.fillRect(-p.r/2,-p.r/4,p.r,p.r/2); fxg.restore(); });
+  parts=parts.filter(p=>p.life>0 && p.y<innerHeight+40);
+  if(parts.length) requestAnimationFrame(tickFx); else { fxOn=false; fxg.clearRect(0,0,innerWidth,innerHeight); }
+}
+
+// ---------- mic with level meter ----------
+let analyser=null, meterRaf=0, recTimer=0, recStart=0;
+async function ensureMic(){
+  try{ await getStream(); S.micError=""; return true; }
+  catch(e){ let framed=false; try{ framed=window.top!==window.self; }catch(_){ framed=true; }
+    S.micError = framed ? "The mic is blocked in this preview. Open the game from its own app link to record." : location.protocol==="https:"||location.hostname==="localhost" ? "Microphone blocked. Allow mic access for this site in your browser settings, then reload." : "This page needs to be opened from its https link to use the mic."; return false; }
+}
+async function recordInto(key,btn,onDone){
+  if(activeRec){ stopRec(); return; }
+  stopPlay();
+  if(!(await ensureMic())){ render(); return; }
+  SFX.recOn(); buzz(30);
+  await new Promise(r=>setTimeout(r,180));
+  const s=await getStream(); const chunks=[]; let mr;
+  try{ mr=new MediaRecorder(s); }catch(e){ S.micError="Recording is not supported in this browser."; render(); return; }
+  mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+  mr.onstop=async()=>{
+    clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
+    SFX.recOff(); buzz(20);
+    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await decode(await blob.arrayBuffer())); S.turn[key]=buf; onDone(buf); }
+    catch(e){ S.micError="Could not read that recording. Try again."; render(); }
+  };
+  mr.start(); activeRec=mr; recStart=Date.now();
+  mr._t=setTimeout(()=>{ if(mr.state==="recording") mr.stop(); },REC_LIMIT);
+  btn.classList.add("rec"); btn.innerHTML=ICON.stop;
+  const lbl=document.getElementById("micLbl"), tm=document.getElementById("micTimer");
+  if(lbl) lbl.textContent="Tap to stop";
+  recTimer=setInterval(()=>{ if(tm) tm.textContent=((Date.now()-recStart)/1000).toFixed(1)+"s"; },100);
+  try{
+    const c=ac(); if(!analyser || analyser._s!==s){ analyser=c.createAnalyser(); analyser.fftSize=512; c.createMediaStreamSource(s).connect(analyser); analyser._s=s; }
+    const data=new Uint8Array(analyser.fftSize);
+    const loop=()=>{ analyser.getByteTimeDomainData(data); let m=0; for(const v of data){ const d=Math.abs(v-128)/128; if(d>m) m=d; } btn.style.setProperty("--lvl",Math.min(1,m*1.8).toFixed(2)); meterRaf=requestAnimationFrame(loop); };
+    loop();
+  }catch(e){}
+}
+const micHTML = (label,done) => `<div class="micwrap">
+  <button class="mic ${done?"done":""}" id="mic" aria-label="${esc(label)}">${done?ICON.check:ICON.mic}</button>
+  <div class="miclabel" id="micLbl">${esc(label)}</div><div class="timer" id="micTimer"></div>
+  ${S.micError?`<p class="err">${esc(S.micError)}</p>`:""}</div>`;
+
+// ---------- render ----------
+const app=document.getElementById("app");
+const $=id=>document.getElementById(id);
+function topbar(){
+  const inGame = !["title","setup"].includes(S.screen);
+  const sc = inGame && pts() ? `<div class="scores"><span class="s sa ${S.turnTeam===0&&S.screen!=="final"?"on":""}" id="sc0">${S.teams[0].score}</span><span class="dim">:</span><span class="s sb ${S.turnTeam===1&&S.screen!=="final"?"on":""}" id="sc1">${S.teams[1].score}</span></div>`
+    : inGame ? `<div class="chip">Casual · turn ${S.history.length+1}</div>` : "";
+  return `<div class="bar"><div class="logo"><span>◀◀</span><span>REVERSE</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+}
+let quitArmed=false;
+function menuHTML(){
+  return `<div class="overlay" id="ov"><div class="card">
+    <div class="row" style="align-items:center"><h2 style="flex:3">How to play</h2><button class="iconbtn" id="closeMenu" style="flex:none" aria-label="Close">✕</button></div>
+    <ul>
+      <li>2 teams of 2. Teams take turns; teammates swap roles each time.</li>
+      <li>The other team picks a word in the category (or the app draws one).</li>
+      <li>The Speaker says it, hears it backward (${S.speakerPlays} plays), then says the backward version from memory.</li>
+      <li>That copy is flipped and played to the Guesser, who guesses the original.</li>
+      <li>Points mode: bet 3 to 8 syllables. Win ${PTS_PER_SYL} points per syllable, miss and lose half.</li>
+    </ul>
+    <p class="lbl">Still to decide <span class="tag">GUESS</span></p>
+    <ul><li>Guesser hears the clip ${S.guesserPlays||"unlimited"} time${S.guesserPlays===1?"":"s"}.</li><li>One typed guess. Close spellings count, and you can overrule the call.</li><li>${S.rounds} rounds, no timer, no steals.</li></ul>
+    <div class="row"><button class="btn ghost" id="muteBtn">${S.muted?"🔇 Sound off":"🔊 Sound on"}</button>
+    ${["title","setup"].includes(S.screen)?"":`<button class="btn ghost" id="quitBtn">${quitArmed?"Tap again to quit":"Quit game"}</button>`}</div>
+  </div></div>`;
+}
+function render(){
+  stopPlay();
+  document.body.dataset.team = ["title","setup"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
+  const v=VIEWS[S.screen]();
+  app.innerHTML = topbar() + `<section class="stage ${v.cls||""}">${v.html}</section>` + (S.menu?menuHTML():"");
+  $("menuBtn").onclick=()=>{ SFX.tap(); S.menu=true; quitArmed=false; render(); };
+  if(S.menu){
+    $("closeMenu").onclick=()=>{ S.menu=false; render(); };
+    $("muteBtn").onclick=()=>{ S.muted=!S.muted; saveSetup(); render(); };
+    const q=$("quitBtn"); if(q) q.onclick=()=>{ if(!quitArmed){ quitArmed=true; render(); return; } S.menu=false; S.screen="title"; render(); };
+  }
+  v.bind && v.bind();
+}
+function go(screen,sfx){ if(sfx) SFX[sfx](); S.screen=screen; render(); window.scrollTo(0,0); }
+const seg=(id,opts,cur)=>`<div class="seg" id="${id}" role="radiogroup">${opts.map(([v,l])=>`<button type="button" role="radio" aria-checked="${String(v)===String(cur)}" data-v="${v}">${l}</button>`).join("")}</div>`;
+function bindSeg(id,fn){ $(id).querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); fn(b.dataset.v); render(); }); }
+function countUp(el,from,to){ if(!el) return; const t0=performance.now(), d=700; const f=now=>{ const k=Math.min(1,(now-t0)/d); el.textContent=Math.round(from+(to-from)*(1-Math.pow(1-k,3))); if(k<1) requestAnimationFrame(f); }; requestAnimationFrame(f); }
+
+function newTurn(){
+  const cat = S.category==="Mixed" ? CATS[Math.floor(Math.random()*CATS.length)] : S.category;
+  S.turn={cat,level:null,word:null,fellBack:false,orig:null,origRev:null,sPlays:S.speakerPlays,copy:null,copyFlip:null,
+          gPlays:S.guesserPlays||Infinity,guess:"",correct:null,team:S.turnTeam,entry:""};
+  S.micError="";
+}
+function afterBet(){
+  if(S.source==="opponent") go("opp","whoosh");
+  else { const d=drawWord(S.turn.cat,pts()?S.turn.level:null); Object.assign(S.turn,d); go("handSpk","whoosh"); }
+}
+
+const VIEWS = {
+  title(){
+    return { cls:"center", html:`<div class="title"><h1 class="huge">REVERSE</h1><h1 class="huge mirror" aria-hidden="true">REVERSE</h1></div>
+      <p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
+      <button class="btn" id="play">PLAY</button>`,
+      bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); }; } };
+  },
+  setup(){
+    const T=S.teams;
+    return { html:`<h2 class="big-t">Set up the battle</h2>
+      <div class="card">
+        <div class="teamrow">
+          <div class="tA"><input class="inp sm" id="t0" value="${esc(T[0].name)}" aria-label="Team 1 name"><input class="inp sm" id="t0p0" value="${esc(T[0].players[0])}" aria-label="Team 1 player 1"><input class="inp sm" id="t0p1" value="${esc(T[0].players[1])}" aria-label="Team 1 player 2"></div>
+          <div class="tB"><input class="inp sm" id="t1" value="${esc(T[1].name)}" aria-label="Team 2 name"><input class="inp sm" id="t1p0" value="${esc(T[1].players[0])}" aria-label="Team 2 player 1"><input class="inp sm" id="t1p1" value="${esc(T[1].players[1])}" aria-label="Team 2 player 2"></div>
+        </div></div>
+      <div class="card">
+        <span class="lbl">Mode</span>${seg("mode",[["points","🏆 Points"],["casual","🎉 Casual"]],S.mode)}
+        <span class="lbl">Who picks the word</span>${seg("source",[["opponent","Other team"],["random","Random"]],S.source)}
+        <span class="lbl">Category</span>${seg("cat",[...CATS.map(c=>[c,c]),["Mixed","Mixed"]],S.category)}
+        <span class="lbl">Guesser hears the clip</span>${seg("gp",[[1,"1×"],[2,"2×"],[0,"∞"]],S.guesserPlays)}
+        ${pts()?`<span class="lbl">Rounds</span>${seg("rounds",[[2,"2"],[4,"4"],[6,"6"],[8,"8"]],S.rounds)}`:""}
+      </div>
+      ${S.micError?`<p class="err">${esc(S.micError)}</p>`:""}
+      <button class="btn" id="start">LET'S GO</button>`,
+      bind(){
+        const keep=()=>S.teams.forEach((t,i)=>{ t.name=$("t"+i).value.trim()||["Red","Blue"][i]; t.players=[0,1].map(j=>$(`t${i}p${j}`).value.trim()||`Player ${i*2+j+1}`); });
+        bindSeg("mode",v=>{keep();S.mode=v;}); bindSeg("source",v=>{keep();S.source=v;}); bindSeg("cat",v=>{keep();S.category=v;});
+        bindSeg("gp",v=>{keep();S.guesserPlays=+v;}); if($("rounds")) bindSeg("rounds",v=>{keep();S.rounds=+v;});
+        $("start").onclick=async()=>{ keep(); saveSetup(); ac(); S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[];
+          try{ navigator.wakeLock && navigator.wakeLock.request("screen").catch(()=>{}); }catch(e){}
+          newTurn(); go("splash","slam"); };
+      } };
+  },
+  splash(){
+    const T=team();
+    return { cls:"center", html:`<div class="splash"><span class="kicker" style="color:#fff">${pts()?`Round ${S.round} of ${S.rounds}`:"Next up"}</span>
+      <h1 class="huge">${esc(T.name)}<br>TEAM</h1>
+      <div class="who"><div><span>Speaker</span><div class="av">${esc(speaker().slice(0,1).toUpperCase())}</div><b>${esc(speaker())}</b></div>
+      <div><span>Guesser</span><div class="av">${esc(guesser().slice(0,1).toUpperCase())}</div><b>${esc(guesser())}</b></div></div>
+      <span class="chip" style="background:rgba(0,0,0,.2)">Category: ${esc(S.turn.cat)}</span></div>
+      <button class="btn" id="go">${pts()?"PLACE YOUR BET":"GO"}</button>`,
+      bind(){ $("go").onclick=()=>{ if(pts()) go("bet","whoosh"); else afterBet(); }; } };
+  },
+  bet(){
+    const hues=["#3f5bd8","#6a3fd8","#a63fd0","#d03f9c","#e2445f","#f0632e"];
+    return { cls:"center", html:`<span class="kicker">${esc(team().name)} · ${esc(S.turn.cat)}</span><h2 class="big-t">How big are you going?</h2>
+      <div class="bets">${[3,4,5,6,7,8].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>
+      <p class="dim">Safe and small, or go big and risk it.</p>`,
+      bind(){ document.querySelectorAll(".bet").forEach(b=>b.onclick=()=>{ S.turn.level=+b.dataset.l; SFX.coin(); buzz(15); afterBet(); }); } };
+  },
+  opp(){
+    const t=S.turn, n=t.entry.trim()?estSyl(t.entry):0;
+    return { cls:"center", html:`<div class="splash" style="padding:22px 18px"><span class="kicker" style="color:#fff">${esc(team().name)} look away</span>
+      <h1 class="big-t">${esc(opp().name)} picks the word</h1>
+      <p>Pick a ${esc(single(t.cat))}${pts()?` with <b>${t.level} syllables</b>`:""} for ${esc(speaker())}.</p></div>
+      <input class="inp" id="entry" autocomplete="off" autocapitalize="off" placeholder="Type it" value="${esc(t.entry)}">
+      <div class="sylls" id="est" aria-live="polite">${n?Array.from({length:n},()=>"<i></i>").join("")+`<span class="dim" style="margin-left:6px">≈${n}</span>`:""}</div>
+      <button class="btn" id="lock" ${t.entry.trim()?"":"disabled"}>LOCK IT IN</button>
+      <button class="btn ghost" id="rand">🎲 Surprise me</button>`,
+      bind(){
+        const e=$("entry"), l=$("lock");
+        e.oninput=()=>{ t.entry=e.value; l.disabled=!e.value.trim(); const k=e.value.trim()?estSyl(e.value):0;
+          $("est").innerHTML = k?Array.from({length:k},()=>"<i></i>").join("")+`<span class="dim" style="margin-left:6px">≈${k}${pts()&&k!==t.level?` (needs ${t.level})`:""}</span>`:""; };
+        e.onkeydown=ev=>{ if(ev.key==="Enter" && e.value.trim()) l.click(); };
+        l.onclick=()=>{ t.word=t.entry.trim(); go("handSpk","slam"); };
+        $("rand").onclick=()=>{ Object.assign(t,drawWord(t.cat,pts()?t.level:null)); go("handSpk","slam"); };
+      } };
+  },
+  handSpk(){
+    return { cls:"center", html:`<div class="splash"><span class="kicker" style="color:#fff">Phone to</span><div class="av" style="width:90px;height:90px;font-size:2.6rem">${esc(speaker().slice(0,1).toUpperCase())}</div>
+      <h1 class="huge">${esc(speaker())}</h1><p>${esc(guesser())}, no peeking.</p></div>
+      <button class="btn" id="go">SHOW MY WORD</button>`,
+      bind(){ $("go").onclick=()=>go("say","whoosh"); } };
+  },
+  say(){
+    const t=S.turn;
+    return { cls:"center", html:`<span class="kicker">Say it normally</span>
+      <div class="word">${esc(t.word)}</div>
+      ${pts()?`<div class="sylls">${"<i></i>".repeat(t.level)}</div>`:`<span class="chip">${esc(t.cat)}</span>`}
+      ${t.fellBack?`<p class="dim">No ${t.level}-syllable ${esc(single(t.cat))} in the list, so this one is a bonus pick.</p>`:""}
+      ${micHTML("Tap to record",false)}`,
+      bind(){ const m=$("mic"); m.onclick=()=>recordInto("orig",m,buf=>{ t.origRev=reverseBuf(buf); t.sPlays=S.speakerPlays; t.copy=null; setTimeout(()=>go("listen","rewind"),250); }); } };
+  },
+  listen(){
+    const t=S.turn;
+    return { cls:"center", html:`<span class="kicker">Here it is backward</span><h2 class="big-t">Listen close</h2>
+      <button class="play" id="pl" ${t.sPlays?"":"disabled"} aria-label="Play backward">${ICON.rew}</button>
+      <div class="pips">${Array.from({length:S.speakerPlays},(_,i)=>`<i class="${i<S.speakerPlays-t.sPlays?"used":""}"></i>`).join("")}</div>
+      <p class="dim">${t.sPlays} listen${t.sPlays===1?"":"s"} left</p>
+      <button class="btn team" id="next" ${t.sPlays<S.speakerPlays?"":"disabled"}>I'VE GOT IT</button>
+      <button class="link" id="redo">Redo my recording</button>`,
+      bind(){
+        const p=$("pl");
+        p.onclick=()=>{ if(!t.sPlays) return; t.sPlays--; buzz(15); p.classList.add("spin"); p.disabled=true; play(t.origRev,()=>render()); };
+        $("next").onclick=()=>go("mimic","whoosh");
+        $("redo").onclick=()=>go("say");
+      } };
+  },
+  mimic(){
+    const t=S.turn, done=!!t.copy;
+    return { cls:"center", html:`<span class="kicker">From memory</span><h2 class="big-t">Now say it BACKWARD</h2>
+      ${micHTML(done?"Recorded! Tap to redo":"Tap to record",done)}
+      ${done?`<button class="btn team" id="send">SEND TO ${esc(guesser().toUpperCase())}</button>`:`<p class="dim">Copy the backward sounds as closely as you can.</p>`}`,
+      bind(){
+        const m=$("mic"); m.onclick=()=>{ if(done && !activeRec){ t.copy=null; m.classList.remove("done"); } recordInto("copy",m,buf=>{ t.copyFlip=reverseBuf(buf); render(); }); };
+        if(done) $("send").onclick=()=>go("handGss","slam");
+      } };
+  },
+  handGss(){
+    return { cls:"center", html:`<div class="splash"><span class="kicker" style="color:#fff">Phone to</span><div class="av" style="width:90px;height:90px;font-size:2.6rem">${esc(guesser().slice(0,1).toUpperCase())}</div>
+      <h1 class="huge">${esc(guesser())}</h1><p>${esc(t_hint())}</p></div>
+      <button class="btn" id="go">I'M READY</button>`,
+      bind(){ $("go").onclick=()=>go("hear","whoosh"); } };
+  },
+  hear(){
+    const t=S.turn, lim=S.guesserPlays, left=t.gPlays, heard=t.heard;
+    return { cls:"center", html:`<span class="kicker">${esc(t.cat)}${pts()?` · ${t.level} syllables`:""}</span><h2 class="big-t">What did ${esc(speaker())} say?</h2>
+      <button class="play" id="pl" ${left?"":"disabled"} aria-label="Play clip">${ICON.play}</button>
+      ${lim?`<div class="pips">${Array.from({length:lim},(_,i)=>`<i class="${i<lim-left?"used":""}"></i>`).join("")}</div><p class="dim">${left} listen${left===1?"":"s"} left</p>`:`<p class="dim">Listen as much as you want</p>`}
+      ${pts()?`<input class="inp" id="guess" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(t.guess)}" ${heard?"":"disabled"}>
+        <button class="btn team" id="submit" ${heard?"":"disabled"}>FINAL ANSWER</button><button class="link" id="giveup" ${heard?"":"hidden"}>Give up</button>`
+      :`<button class="btn team" id="reveal" ${heard?"":"disabled"}>REVEAL IT</button>`}`,
+      bind(){
+        const p=$("pl");
+        p.onclick=()=>{ if(!t.gPlays) return; if(lim) t.gPlays--; t.heard=true; buzz(15); p.classList.add("spin"); p.disabled=true; play(t.copyFlip,()=>render()); };
+        if(pts()){
+          const g=$("guess"); g.oninput=()=>t.guess=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("submit").click(); };
+          $("submit").onclick=()=>{ if(!t.guess.trim()){ g.focus(); return; } finish(judge(t.guess,t.word)); };
+          $("giveup").onclick=()=>{ t.guess=""; finish(false); };
+        } else $("reveal").onclick=()=>finish(null);
+      } };
+  },
+  drum(){
+    return { cls:"center", html:`<div class="drum">🥁</div><h2 class="big-t">${pts()?`“${esc(S.turn.guess||"…")}”`:"And the word was…"}</h2>` };
+  },
+  reveal(){
+    const t=S.turn, ok=t.correct, d=ok?pointsFor(t.level):-penaltyFor(t.level), last=pts() && S.round>S.rounds;
+    const hearer=S.teams[t.team].players[1-(S.teams[t.team].turns-1)%2];
+    return { cls:"center"+(pts()&&!ok?" shake":""), html:`
+      ${pts()?`<div class="stamp ${ok?"good":"bad"}">${ok?"NAILED IT":t.guess?"NOPE":"GAVE UP"}</div>`:""}
+      <div class="word">${esc(t.word)}</div>
+      ${pts()?`<div class="delta ${ok?"good":"bad"}">${d>0?"+":"−"}${Math.abs(d)}</div>`
+        :`<div class="row" style="width:100%"><button class="btn ghost" id="gotIt">${t.correct===true?"✅ ":""}Got it</button><button class="btn ghost" id="missed">${t.correct===false?"❌ ":""}Missed</button></div>`}
+      <div class="card" style="width:100%;box-sizing:border-box"><span class="lbl">Hear the whole chain</span><div class="chain">
+        <button class="btn ghost" id="c1">1 · Original</button><button class="btn ghost" id="c2">2 · Backward</button>
+        <button class="btn ghost" id="c3">3 · Backward copy</button><button class="btn ghost" id="c4">4 · What ${esc(hearer)} heard</button></div>
+        ${pts()?`<button class="link" id="flip">${ok?"That's wrong, mark it a miss":"Close enough? Count it"}</button>`:""}</div>
+      <button class="btn" id="next">${last?"FINAL SCORES":"NEXT TURN"}</button>${!pts()?`<button class="link" id="end">End game</button>`:""}`,
+      bind(){
+        $("c1").onclick=()=>play(t.orig); $("c2").onclick=()=>play(t.origRev); $("c3").onclick=()=>play(t.copy); $("c4").onclick=()=>play(t.copyFlip);
+        if(pts()) $("flip").onclick=()=>{ const before=S.teams[t.team].score; applyScore(-1); t.correct=!t.correct; applyScore(1); render(); countUp($("sc"+t.team),before,S.teams[t.team].score); if(t.correct){SFX.win();confetti();} else SFX.lose(); };
+        else { $("gotIt").onclick=()=>{ t.correct=true; t.log.ok=true; SFX.win(); confetti(80); render(); }; $("missed").onclick=()=>{ t.correct=false; t.log.ok=false; SFX.lose(); render(); }; $("end").onclick=()=>go("final","fanfare"); }
+        $("next").onclick=()=>{ if(last){ go("final","fanfare"); setTimeout(()=>confetti(220),200); } else { newTurn(); go("splash","slam"); } };
+      } };
+  },
+  final(){
+    const [A,B]=S.teams, tie=A.score===B.score, w=A.score>B.score?A:B, wi=A.score>B.score?0:1;
+    const tally=i=>S.history.filter(h=>h.team===i && h.ok).length;
+    if(pts() && !tie) document.body.dataset.team=String(wi);
+    return { cls:"center", html:`<div class="splash"><div style="font-size:4rem;line-height:1">🏆</div>
+      <h1 class="huge">${pts()?(tie?"IT'S A TIE":esc(w.name)+" WINS"):"GG!"}</h1>
+      <p class="d" style="font-size:1.6rem">${pts()?`${A.score} : ${B.score}`:`${esc(A.name)} ${tally(0)} · ${esc(B.name)} ${tally(1)}`}</p></div>
+      <button class="btn" id="again">REMATCH</button><button class="btn ghost" id="newg">New setup</button>
+      <div class="card" style="width:100%;box-sizing:border-box;text-align:left"><span class="lbl">Every turn</span>
+      ${S.history.map(h=>`<p>${esc(S.teams[h.team].name)} · <b>${esc(h.word)}</b> ${pts()?`<span style="color:${h.d>0?"var(--good)":"var(--bad)"}">${h.d>0?"+":"−"}${Math.abs(h.d)}</span>`:(h.ok===true?"✅":h.ok===false?"❌":"")}</p>`).join("")||`<p class="dim">No turns played.</p>`}</div>`,
+      bind(){
+        $("again").onclick=()=>{ S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[]; newTurn(); go("splash","slam"); };
+        $("newg").onclick=()=>go("setup","tap");
+      } };
+  }
+};
+function t_hint(){ return `Category: ${S.turn.cat}${pts()?` · worth ${pointsFor(S.turn.level)}`:""}`; }
+function applyScore(sign){ const t=S.turn, d=t.correct?pointsFor(t.level):-penaltyFor(t.level); S.teams[t.team].score+=sign*d; if(sign>0) t.log.d=d; }
+function finish(correct){
+  const t=S.turn; t.correct=correct;
+  t.log={team:t.team,word:t.word,level:t.level,d:0,ok:correct}; S.history.push(t.log);
+  const before=S.teams[t.team].score;
+  go("drum"); SFX.drum(); buzz([20,40,20,40,20]);
+  setTimeout(()=>{
+    if(pts()) applyScore(1);
+    S.teams[t.team].turns++;
+    S.turnTeam=1-S.turnTeam; if(S.turnTeam===0) S.round++;
+    go("reveal"); SFX.slam();
+    if(pts()){ countUp($("sc"+t.team),before,S.teams[t.team].score); if(correct){ setTimeout(()=>{SFX.win();confetti();buzz(60);},150); } else setTimeout(()=>{SFX.lose();buzz([80,60,80]);},150); }
+  },1500);
+}
+render();
+
+</script>
+<script>if("serviceWorker" in navigator) addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
+</body></html>
