@@ -1,9 +1,9 @@
-// Cloudflare Workers config: serves the game as static files from the repo root.
+// Cloudflare Workers config: serves the game as static files from docs/.
 {
   "name": "voicegame",
   "compatibility_date": "2025-06-01",
   "assets": {
-    "directory": "./",
+    "directory": "./docs",
     "not_found_handling": "single-page-application"
   }
 }
