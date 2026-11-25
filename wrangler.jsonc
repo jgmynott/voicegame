@@ -17,6 +17,8 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   "ai": { "binding": "AI" },
   "observability": { "enabled": true },
+  // Setting routes turns workers.dev off unless it is kept on explicitly.
+  "workers_dev": true,
   "routes": [
     { "pattern": "backslang.io", "custom_domain": true },
     { "pattern": "www.backslang.io", "custom_domain": true }
