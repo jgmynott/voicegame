@@ -22,7 +22,7 @@ export default {
     if (url.pathname === "/api/say" && req.method === "GET") {
       const w = (url.searchParams.get("w") || "").trim().slice(0, 80);
       if (!w || !(await wordSet(env, url.origin)).has(w.toLowerCase())) return new Response("Unknown word", { status: 404 });
-      const r = await ttsAudio(env, w, `${url.origin}/api/say?w=${encodeURIComponent(w.toLowerCase())}&v=1`);
+      const r = await ttsAudio(env, w, `${url.origin}/api/say?w=${encodeURIComponent(w.toLowerCase())}&v=2`);
       if (!r.ok) return r;
       return new Response(r.body, { headers: { "content-type": r.headers.get("content-type"), "cache-control": "public, max-age=86400" } });
     }
@@ -74,7 +74,7 @@ function feedback(guess, answer) {
 }
 const json = (o, init = {}) => new Response(JSON.stringify(o), { ...init, headers: { "content-type": "application/json", "cache-control": "no-store", ...(init.headers || {}) } });
 async function dailyAudio(env, t, origin) {
-  return ttsAudio(env, t.word, `${origin}/api/daily/audio?d=${t.date}&v=1`);
+  return ttsAudio(env, t.word, `${origin}/api/daily/audio?d=${t.date}&v=2`);
 }
 // Free play: speak any entry from the public word list (and only those, so the endpoint can't be used as a general voice).
 let WORDSET = null;
@@ -86,6 +86,19 @@ async function wordSet(env, origin) {
   for (const [w] of DAILY) set.add(w.toLowerCase());
   return (WORDSET = set);
 }
+// Streamed WAV files can carry placeholder lengths in their header, which some phone browsers refuse to
+// decode. Write the real lengths in.
+function fixWavSizes(b) {
+  const tag = (o, s) => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]) === s;
+  if (b.length < 44 || !tag(0, "RIFF") || !tag(8, "WAVE")) return;
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  v.setUint32(4, b.length - 8, true);
+  for (let o = 12; o + 8 <= b.length; ) {
+    const size = v.getUint32(o + 4, true);
+    if (tag(o, "data")) { v.setUint32(o + 4, b.length - o - 8, true); return; }
+    o += 8 + size + (size & 1);
+  }
+}
 async function ttsAudio(env, text, cacheUrl) {
   const t = { word: text };
   const key = new Request(cacheUrl);
@@ -93,20 +106,26 @@ async function ttsAudio(env, text, cacheUrl) {
   const hit = await cache.match(key);
   if (hit) return hit;
   let bytes = null, type = "audio/mpeg";
+  // A trailing period gives the word a full, finished read (falling tone, no clipped ending).
+  const say = text.replace(/[.!?,;:]+$/, "") + ".";
+  // Thalia is Deepgram's clearest, most even voice. The clip is fetched as uncompressed WAV: MP3 smears
+  // the start of each sound (pre-echo), and once the clip is reversed that smear lands after it, which
+  // muddies consonants. MP3 and the older models are kept as fallbacks.
   const tries = [
-    ["@cf/deepgram/aura-2-en", { text: t.word, encoding: "mp3" }],
-    ["@cf/deepgram/aura-1", { text: t.word, speaker: "asteria", encoding: "mp3" }],
-    ["@cf/myshell-ai/melotts", { prompt: t.word, lang: "en" }],
+    ["@cf/deepgram/aura-2-en", { text: say, speaker: "thalia", encoding: "linear16", container: "wav", sample_rate: 24000 }, "audio/wav"],
+    ["@cf/deepgram/aura-2-en", { text: say, speaker: "thalia", encoding: "mp3" }],
+    ["@cf/deepgram/aura-1", { text: say, speaker: "asteria", encoding: "mp3" }],
+    ["@cf/myshell-ai/melotts", { prompt: say, lang: "en" }],
   ];
   let lastErr = "";
-  for (const [model, input] of tries) {
+  for (const [model, input, wantType] of tries) {
     try {
       const r = await env.AI.run(model, input, { returnRawResponse: true });
       if (r instanceof Response) {
         if (!r.ok) throw new Error(model + " " + r.status);
         const ct = r.headers.get("content-type") || "";
         if (ct.includes("json")) { const j = await r.json(); const a = j.audio || (j.result && j.result.audio); if (!a) throw new Error(model + " no audio"); bytes = Uint8Array.from(atob(a), c => c.charCodeAt(0)); }
-        else { bytes = new Uint8Array(await r.arrayBuffer()); if (ct.startsWith("audio/")) type = ct; }
+        else { bytes = new Uint8Array(await r.arrayBuffer()); type = ct.startsWith("audio/") ? ct : (wantType || type); }
       } else if (r && typeof r.getReader === "function") bytes = new Uint8Array(await new Response(r).arrayBuffer());
       else if (r && r.audio) bytes = Uint8Array.from(atob(r.audio), c => c.charCodeAt(0));
       if (bytes && bytes.length > 500) break;
@@ -114,6 +133,7 @@ async function ttsAudio(env, text, cacheUrl) {
     } catch (e) { lastErr = String(e && e.message || e); }
   }
   if (!bytes) return new Response("Voice unavailable: " + lastErr, { status: 503 });
+  fixWavSizes(bytes);
   const res = new Response(bytes, { headers: { "content-type": type, "cache-control": "public, max-age=90000" } });
   await cache.put(key, res.clone());
   return res;
