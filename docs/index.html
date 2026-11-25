@@ -225,7 +225,33 @@ function estSyl(text){
 
 // ---------- Audio ----------
 let actx = null, stream = null, playing = null, micBlocked = false;
-function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==="suspended") actx.resume(); return actx; }
+// iPhone silent switch: by default Safari plays Web Audio in the "ambient" session, which the
+// ring/silent switch mutes. Ask for the "playback" session (iOS 17+) so sound always plays, and
+// switch to "play-and-record" only while the mic is open. Older iOS gets the same effect from a
+// silent looping <audio> element, which moves the page into the media playback session.
+const AS = navigator.audioSession || null;
+function setSession(t){ try{ if(AS && AS.type!==t) AS.type=t; }catch(e){} }
+setSession("playback");
+let unlockEl=null;
+function silentWav(){ const n=4410, b=new Uint8Array(44+n*2), v=new DataView(b.buffer), w=(o,t)=>{ for(let i=0;i<t.length;i++) b[o+i]=t.charCodeAt(i); };
+  w(0,"RIFF"); v.setUint32(4,36+n*2,true); w(8,"WAVEfmt "); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,44100,true); v.setUint32(28,88200,true); v.setUint16(32,2,true); v.setUint16(34,16,true); w(36,"data"); v.setUint32(40,n*2,true);
+  let bin=""; for(const x of b) bin+=String.fromCharCode(x); return "data:audio/wav;base64,"+btoa(bin); }
+function unlockLegacy(){
+  if(AS || document.hidden) return;
+  try{
+    if(!unlockEl){ unlockEl=document.createElement("audio"); unlockEl.setAttribute("x-webkit-airplay","deny"); unlockEl.setAttribute("playsinline","");
+      unlockEl.preload="auto"; unlockEl.loop=true; unlockEl.src=silentWav(); unlockEl.load(); }
+    if(unlockEl.paused){ const p=unlockEl.play(); if(p&&p.catch) p.catch(()=>{}); }
+  }catch(e){}
+}
+function ac(){
+  if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+  if(actx.state!=="running"){ try{ const p=actx.resume(); if(p&&p.catch) p.catch(()=>{}); }catch(e){} }
+  unlockLegacy(); return actx;
+}
+// Any tap re-arms audio: iOS suspends or "interrupts" the context after calls, the lock screen and app switches.
+["pointerdown","touchend","keydown"].forEach(ev=>window.addEventListener(ev,()=>{ if(!activeRec) setSession(stream&&stream.active?"play-and-record":"playback"); if(actx) ac(); else unlockLegacy(); },{capture:true,passive:true}));
 function decode(ab){ return new Promise((res,rej)=>ac().decodeAudioData(ab,res,rej)); }
 function stopPlay(){ if(playing){ const p=playing; playing=null; try{p.stop()}catch(e){} } }
 function play(buf,onEnd,rate){
@@ -296,22 +322,23 @@ function trimBuf(buf){
 }
 async function getStream(){
   if(stream && stream.active) return stream;
+  setSession("play-and-record");
   // Ask the phone for its voice processing: noise suppression, echo cancellation, auto gain, mono.
   // voiceIsolation is used where the browser supports it (newer Chrome); others ignore it.
   const want={echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,voiceIsolation:true};
   try{ stream = await navigator.mediaDevices.getUserMedia({audio:want}); }
-  catch(e){ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
+  catch(e){ try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); } catch(e2){ setSession("playback"); throw e2; } }
   return stream;
 }
 let activeRec=null;
 function stopRec(){ if(activeRec && activeRec.state==="recording") activeRec.stop(); }
 // Turn the mic off when it isn't needed (home screen, app in the background). An open mic keeps the
 // phone's recording indicator on and, on iPhones, routes playback through voice processing, which is quieter.
-let releaseAfterRec=false;
 function releaseMic(){
-  if(activeRec){ releaseAfterRec=true; stopRec(); return; }
-  releaseAfterRec=false;
+  if(activeRec){ stopRec(); return; } // the recorder's onstop closes the mic
   if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=null; }
+  // Back to the playback session so the silent switch can't mute the game and sound uses the loud speaker.
+  setSession("playback"); if(actx && !document.hidden) ac();
 }
 
 
@@ -441,23 +468,23 @@ function tickFx(){
 
 // ---------- mic with level meter ----------
 let analyser=null, meterRaf=0, recTimer=0, recStart=0;
-async function ensureMic(){
-  try{ await getStream(); S.micError=""; return true; }
+async function ensureMic(keep){
+  try{ await getStream(); S.micError=""; if(!keep) releaseMic(); return true; }
   catch(e){ let framed=false; try{ framed=window.top!==window.self; }catch(_){ framed=true; }
     S.micError = framed ? "The mic is blocked in this preview. Open the game from its own app link to record." : location.protocol==="https:"||location.hostname==="localhost" ? "Microphone blocked. Allow mic access for this site in your browser settings, then reload." : "This page needs to be opened from its https link to use the mic."; return false; }
 }
 async function recordInto(key,btn,onDone){
   if(activeRec){ stopRec(); return; }
   stopPlay();
-  if(!(await ensureMic())){ render(); return; }
+  if(!(await ensureMic(true))){ render(); return; }
   SFX.recOn(); buzz(30);
   await new Promise(r=>setTimeout(r,180));
   const s=await getStream(); const chunks=[]; let mr;
-  try{ mr=new MediaRecorder(s); }catch(e){ S.micError="Recording is not supported in this browser."; render(); return; }
+  try{ mr=new MediaRecorder(s); }catch(e){ releaseMic(); S.micError="Recording is not supported in this browser."; render(); return; }
   mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
   mr.onstop=async()=>{
     clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
-    if(releaseAfterRec) releaseMic();
+    releaseMic(); // close the mic after every take so playback is full volume and ignores the silent switch
     SFX.recOff(); buzz(20);
     try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await cleanBuf(await decode(await blob.arrayBuffer()))); S.turn[key]=buf; onDone(buf,blob); }
     catch(e){ S.micError="Could not read that recording. Try again."; render(); }
@@ -1300,8 +1327,9 @@ addEventListener("load",()=>setTimeout(()=>idle(prefetchDaily),800));
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){
     // In the background: stop any recording and turn the mic off. It comes back on the next record tap.
-    releaseMic();
+    releaseMic(); if(unlockEl) try{ unlockEl.pause(); }catch(e){}
   } else {
+    if(actx) ac();
     if(wakeWanted && !["title","setup","daily","solo"].includes(S.screen)) keepAwake(true);
     // Phones drop sockets in the background. Reconnect right away instead of waiting out the retry delay.
     if(S.screen==="online" && O.code && !O.closed && (!O.ws || O.ws.readyState>1)){ clearTimeout(O.rt); O.retry=0; connect(O.code); }
