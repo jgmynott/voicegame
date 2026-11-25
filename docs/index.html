@@ -8,12 +8,13 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
-</head><body>
 <title>BackWords</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap">
+<!-- Fredoka (SIL Open Font License) is served from this site, so the first paint does not wait on another domain. -->
+<link rel="preload" href="fonts/fredoka-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
 <style>
+@font-face{font-family:"Fredoka";font-style:normal;font-weight:300 700;font-stretch:100%;font-display:swap;src:url(fonts/fredoka-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 /* Layout: phone-first stage. A thin bar on top, one main action per screen, centered.
    Look: white and orange, one rounded friendly font (Fredoka), flat shapes, little decoration. */
 :root{
@@ -40,8 +41,8 @@ b{font-weight:600}
 
 /* top bar */
 .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0 10px}
-.logo{font-family:var(--f-d);font-weight:600;font-size:1.15rem;display:flex;gap:0;align-items:center;letter-spacing:-.01em}
-.logo span:first-child{display:none}
+.logo{font-family:var(--f-d);font-weight:600;font-size:1.15rem;display:flex;gap:0;align-items:center;letter-spacing:-.01em;background:none;border:none;color:var(--ink);padding:6px 6px 6px 0;margin:0;cursor:pointer;min-height:40px}
+.logo .bk{display:inline-block;width:.9em;margin-right:2px;font-size:1.3rem;line-height:1;color:var(--dim)}
 .logo .w{color:var(--a)}
 .scores{display:flex;align-items:center;gap:6px;font-family:var(--f-d);font-weight:600;font-size:1.1rem;font-variant-numeric:tabular-nums}
 .scores .s{padding:3px 10px;border-radius:999px;min-width:2.4em;text-align:center;color:#fff}
@@ -50,7 +51,9 @@ b{font-weight:600}
 .scores .sa.on{color:#fff;box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--a)} .scores .sb.on{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--b)}
 .iconbtn{width:40px;height:40px;border-radius:12px;border:none;background:var(--card);color:var(--ink);font-size:1.2rem;cursor:pointer;display:grid;place-items:center}
 
-.stage{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding-block:8px;animation:enter .3s ease-out}
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center;gap:18px;padding-block:8px;animation:enter .22s ease-out}
+/* A re-render of the same screen (a tap, a server update) must not replay the entrance animations. */
+.stage.still,.stage.still .word,.stage.still .splash,.stage.still .bet,.stage.still .stamp,.stage.still .delta,.stage.still.shake{animation:none}
 @keyframes enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .center{text-align:center;align-items:center}
 .kicker{font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
@@ -75,9 +78,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 /* mic */
 .micwrap{display:flex;flex-direction:column;align-items:center;gap:14px}
 .mic{--lvl:0;position:relative;width:min(52vw,190px);aspect-ratio:1;max-width:100%;border-radius:50%;border:none;cursor:pointer;color:#fff;
-  background:var(--a);box-shadow:0 6px 0 var(--a-dk), 0 0 0 calc(8px + var(--lvl)*40px) color-mix(in srgb,var(--a) 18%,transparent);
-  display:grid;place-items:center;transition:box-shadow .08s, transform .1s}
-.mic:active{transform:translateY(4px);box-shadow:0 2px 0 var(--a-dk), 0 0 0 8px color-mix(in srgb,var(--a) 18%,transparent)}
+  background:var(--a);box-shadow:0 6px 0 var(--a-dk);display:grid;place-items:center;transition:transform .1s;isolation:isolate}
+/* level ring: scaled with transform so the live meter is composited instead of repainting a shadow every frame */
+.mic::before{content:"";position:absolute;inset:-8px;border-radius:50%;background:rgba(255,106,19,.18);z-index:-1;pointer-events:none;
+  transform:scale(calc(1 + var(--lvl)*.38));transition:transform .08s linear;will-change:transform}
+.mic.done::before{background:rgba(22,163,74,.16)}
+.mic:active{transform:translateY(4px);box-shadow:0 2px 0 var(--a-dk)}
 .mic svg{width:36%;height:36%}
 .mic.rec{animation:throb 1s infinite}
 .mic.done{background:var(--good);box-shadow:0 6px 0 var(--good-dk)}
@@ -196,60 +202,17 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .dstats b{font-size:1.6rem;color:var(--ink)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
-
+</head><body>
 <canvas id="fx"></canvas>
 <div class="wrap" id="app"></div>
 
 <script>
-// ---------- Word bank: [phrase, syllables] by category ----------
-const BANK = {
-  Places:[
-    ["Canada",3],["Mexico",3],["Chicago",3],["Las Vegas",3],["Kentucky",3],["Hollywood",3],["Amsterdam",3],["Mount Rushmore",3],["Grand Canyon",3],["Jacksonville",3],
-    ["Argentina",4],["Minnesota",4],["Oklahoma",4],["Mississippi",4],["Sacramento",4],["Kalamazoo",4],["Tallahassee",4],["Cincinnati",4],["New York City",4],["Machu Picchu",4],["Easter Island",4],["Mount Everest",4],["Salt Lake City",4],["Golden Gate Bridge",4],
-    ["Philadelphia",5],["Minneapolis",5],["Mount Kilimanjaro",5],["Niagara Falls",5],["Copacabana",5],["Washington D.C.",5],["Great Wall of China",5],["Buckingham Palace",5],["Sahara Desert",5],["Pacific Ocean",5],["Constantinople",5],
-    ["Indianapolis",6],["Rio de Janeiro",6],["Statue of Liberty",6],["Empire State Building",6],["Hollywood Boulevard",6],["Galapagos Islands",6],["Amazon rainforest",6],["Mississippi River",6],["Oklahoma City",6],["Las Vegas Nevada",6],["the Great Barrier Reef",6],
-    ["Albuquerque New Mexico",7],["Honolulu Hawaii",7],["Cincinnati Ohio",7],["Tallahassee Florida",7],["Kalamazoo Michigan",7],["Mediterranean Sea",7],["Yellowstone National Park",7],["Grand Canyon National Park",7],["Buckingham Palace London",7],["Disney World in Orlando",7],
-    ["Mississippi River Delta",8],["Rio de Janeiro Brazil",8],["Golden Gate Bridge San Francisco",8],["the Mediterranean Sea",8],["Indianapolis Speedway",8]
-  ],
-  Animals:[
-    ["kangaroo",3],["octopus",3],["porcupine",3],["butterfly",3],["dinosaur",3],["buffalo",3],["elephant",3],["gorilla",3],["flamingo",3],["jellyfish",3],["chimpanzee",3],["iguana",3],["crocodile",3],["mosquito",3],
-    ["alligator",4],["rhinoceros",4],["salamander",4],["caterpillar",4],["armadillo",4],["orangutan",4],["tarantula",4],["barracuda",4],["anaconda",4],["pterodactyl",4],["German shepherd",4],["praying mantis",4],["giant panda",4],
-    ["hippopotamus",5],["tyrannosaurus",5],["velociraptor",5],["brachiosaurus",5],["Komodo dragon",5],["golden retriever",5],["duck-billed platypus",5],["emperor penguin",5],["black widow spider",5],
-    ["Tasmanian devil",6],["Siberian tiger",6],["tyrannosaurus rex",6],["Labrador retriever",6],["Galapagos tortoise",6],["African elephant",6],["velociraptor egg",6],["brachiosaurus neck",6],
-    ["golden retriever puppy",7],["Siberian husky dog",7],["Tasmanian devil cub",7],["African bush elephant",7],["tyrannosaurus rex tooth",7],["Galapagos sea turtle",7],
-    ["Siberian husky puppy",8],["Labrador retriever puppy",8],["duck-billed platypus family",8],["Galapagos giant tortoise",8],["brachiosaurus skeleton",8]
-  ],
-  Food:[
-    ["spaghetti",3],["pineapple",3],["lemonade",3],["cinnamon",3],["banana",3],["burrito",3],["potato",3],["tomato",3],["broccoli",3],["hamburger",3],["popsicle",3],
-    ["watermelon",4],["avocado",4],["macaroni",4],["pepperoni",4],["cappuccino",4],["jalapeno",4],["peanut butter",4],["mashed potatoes",4],["corn on the cob",4],["cinnamon roll",4],["tomato soup",4],["cotton candy",4],["hot fudge sundae",4],
-    ["avocado toast",5],["strawberry shortcake",5],["blueberry pancakes",5],["potato salad",5],["chicken noodle soup",5],["barbecue chicken",5],["strawberry milkshake",5],["watermelon seed",5],
-    ["macaroni salad",6],["pepperoni pizza",6],["banana split sundae",6],["spaghetti and meatballs",6],["macaroni and cheese",6],["jalapeno poppers",6],["cotton candy machine",6],["watermelon smoothie",6],
-    ["peanut butter and jelly",7],["pineapple upside-down cake",7],["pepperoni pizza slice",7],["spaghetti and meatball sub",7],["barbecue chicken pizza",7],["cinnamon raisin bagel",7],["strawberry shortcake with cream",7],
-    ["strawberry banana smoothie",8],["blueberry pancakes with syrup",8],["jalapeno cheddar biscuit",8],["macaroni and cheese with ham",8]
-  ],
-  Things:[
-    ["ambulance",3],["telescope",3],["umbrella",3],["volcano",3],["tornado",3],["piano",3],["computer",3],["bicycle",3],["calendar",3],["trampoline",3],["microwave",3],
-    ["helicopter",4],["thermometer",4],["escalator",4],["harmonica",4],["calculator",4],["hot air balloon",4],["motorcycle",4],["television",4],["binoculars",4],["accordion",4],
-    ["refrigerator",5],["roller coaster ride",5],["magic carpet ride",5],["vacuum cleaner",5],["electric guitar",5],["television set",5],["remote control car",5],["microwave oven",5],["electric toothbrush",5],["hot air balloon ride",5],
-    ["refrigerator door",6],["motorcycle helmet",6],["vacuum cleaner bag",6],["television remote",6],["microwave popcorn bag",6],
-    ["electric guitar solo",7],["refrigerator magnet",7],["helicopter landing pad",7],["motorcycle helmet strap",7],["calculator battery",7],["electric toothbrush charger",7],
-    ["television remote control",8],["vacuum cleaner attachment",8],["remote control helicopter",8]
-  ],
-  Sayings:[
-    ["break a leg",3],["spill the beans",3],["hit the road",3],["cold feet",2],
-    ["piece of cake",4],["on the fence",3],["call it a day",4],["cut to the chase",4],["hold your horses",4],
-    ["under the weather",5],["once in a blue moon",5],["practice makes perfect",5],["there's no place like home",5],["bite the bullet now",5],
-    ["hit the nail on the head",6],["the ball is in your court",6],["it takes two to tango",6],["a blessing in disguise",6],["barking up the wrong tree",6],["a penny for your thoughts",6],
-    ["the elephant in the room",7],["the grass is always greener",7],["let the cat out of the bag",7],["Rome wasn't built in a day",7],["all that glitters is not gold",7],["actions speak louder than words",7],["the early bird gets the worm",7],["the squeaky wheel gets the grease",7],
-    ["curiosity killed the cat",8],["don't judge a book by its cover",8],["the early bird catches the worm",8],["laughter is the best medicine",8],["biting off more than you can chew",8],["absence makes the heart grow fonder",8],["you can't teach an old dog new tricks",8]
-  ]
-};
-for(const c in BANK) BANK[c]=BANK[c].filter(([w,n])=>n>=3 && n<=8);
-const CATS = Object.keys(BANK);
+// ---------- Word bank: [phrase, syllables] by category, loaded from words.json ----------
+const BANK = {};
+const CATS = [];
 const PTS_PER_SYL = 10;
 const pointsFor = s => s * PTS_PER_SYL;
 const penaltyFor = s => Math.ceil(pointsFor(s) / 2);
-const MAX_REC_MS = 12000;
 
 // Rough syllable estimate for words the other team types in
 function estSyl(text){
@@ -341,33 +304,15 @@ async function getStream(){
   return stream;
 }
 let activeRec=null;
-async function startRec(onDone,onFail){
-  ac();
-  try{
-    const s=await getStream(); const chunks=[]; const mr=new MediaRecorder(s);
-    mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
-    mr.onstop=async()=>{
-      clearTimeout(mr._t); activeRec=null;
-      try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}); const buf=await decode(await blob.arrayBuffer()); onDone(trimBuf(buf)); }
-      catch(e){ onFail("Could not read that recording. Try again."); }
-    };
-    mr.start(); mr._t=setTimeout(()=>{ if(mr.state==="recording") mr.stop(); },MAX_REC_MS);
-    activeRec=mr; return true;
-  }catch(e){ micBlocked=true; onFail(null); return false; }
-}
 function stopRec(){ if(activeRec && activeRec.state==="recording") activeRec.stop(); }
-async function fileToBuf(file){ ac(); return trimBuf(await decode(await file.arrayBuffer())); }
-
-function drawWave(canvas,buf,color){
-  const dpr=window.devicePixelRatio||1, w=canvas.clientWidth, h=canvas.clientHeight;
-  canvas.width=w*dpr; canvas.height=h*dpr; const g=canvas.getContext("2d"); g.scale(dpr,dpr);
-  const d=buf.getChannelData(0), bars=Math.max(20,Math.floor(w/4)), step=Math.floor(d.length/bars)||1;
-  let max=0; const vals=[];
-  for(let i=0;i<bars;i++){ let m=0; for(let j=i*step;j<(i+1)*step && j<d.length;j+=4){ const v=Math.abs(d[j]); if(v>m) m=v; } vals.push(m); if(m>max) max=m; }
-  g.fillStyle=color;
-  vals.forEach((v,i)=>{ const bh=Math.max(2,(v/(max||1))*(h-12)); g.fillRect(i*(w/bars)+1,(h-bh)/2,Math.max(1,w/bars-2),bh); });
+// Turn the mic off when it isn't needed (home screen, app in the background). An open mic keeps the
+// phone's recording indicator on and, on iPhones, routes playback through voice processing, which is quieter.
+let releaseAfterRec=false;
+function releaseMic(){
+  if(activeRec){ releaseAfterRec=true; stopRec(); return; }
+  releaseAfterRec=false;
+  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=null; }
 }
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 
 // ================= Game UI =================
@@ -391,6 +336,11 @@ const S = {
 try{ const saved=JSON.parse(localStorage.getItem("rvg-setup")||"null"); if(saved) Object.assign(S,saved); }catch(e){}
 function saveSetup(){ try{ localStorage.setItem("rvg-setup",JSON.stringify({teams:S.teams.map(t=>({name:t.name,players:t.players,score:0,turns:0})),mode:S.mode,source:S.source,category:S.category,guesserPlays:S.guesserPlays,rounds:S.rounds,muted:S.muted})); }catch(e){} }
 
+// Read the setup screen's name fields into state (if the setup screen is showing).
+function keepSetup(){ if(!$("t0")) return; S.teams.forEach((t,i)=>{ t.name=$("t"+i).value.trim()||["Red","Blue"][i]; t.players=[0,1].map(j=>$(`t${i}p${j}`).value.trim()||`Player ${i*2+j+1}`); }); }
+// Keep the screen on during a game; the browser drops the lock when the app goes to the background, so take it again on return.
+let wakeWanted=false, wakeLock=null;
+async function keepAwake(on){ wakeWanted=on; try{ if(on && navigator.wakeLock && !wakeLock){ wakeLock=await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release",()=>{ wakeLock=null; }); } if(!on && wakeLock){ const w=wakeLock; wakeLock=null; w.release(); } }catch(e){ wakeLock=null; } }
 const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const team = () => S.teams[S.turnTeam];
 const opp = () => S.teams[1-S.turnTeam];
@@ -414,18 +364,23 @@ function drawWord(cat,level){
   if(!list.length){ list=CATS.flatMap(c=>deckList(c,level)); key="all|"+level; fellBack=true; }
   const [w,n]=drawFrom(key,list); return {word:w,syl:n,fellBack,drawn:true};
 }
-async function loadWords(){
+// words.json is fetched as soon as the script runs. The service worker serves it from cache when it can.
+let WORD_COUNT=0, wordsLoaded=false, wordsResolve;
+const wordsReady=new Promise(r=>wordsResolve=r);
+async function loadWords(tries=0){
   try{
-    const r=await fetch("words.json",{cache:"no-cache"}); if(!r.ok) return; const data=await r.json();
-    for(const k of Object.keys(BANK)) delete BANK[k];
+    const r=await fetch("words.json"); if(!r.ok) throw new Error(r.status); const data=await r.json();
     for(const [cat,levels] of Object.entries(data)){ BANK[cat]=[]; for(const [n,arr] of Object.entries(levels)) for(const w of arr) BANK[cat].push([w,+n]); }
     CATS.splice(0,CATS.length,...Object.keys(BANK));
     WORD_COUNT=CATS.reduce((a,c)=>a+BANK[c].length,0);
     if(!CATS.includes(S.category) && S.category!=="Mixed") S.category=CATS[0];
-    if(["title","setup"].includes(S.screen)) render();
-  }catch(e){}
+    if(!CATS.includes(P.cat) && P.cat!=="Mixed") P.cat="Mixed";
+    wordsLoaded=true; wordsResolve();
+    // Update in place: no full re-render of the home screen, so nothing flashes or jumps.
+    const chip=$("wcount"); if(chip){ chip.textContent=WORD_COUNT.toLocaleString()+" words and phrases"; chip.style.visibility=""; }
+    if(S.screen==="setup"){ keepSetup(); render(); }
+  }catch(e){ setTimeout(()=>loadWords(tries+1), Math.min(10000,1000*2**tries)); }
 }
-let WORD_COUNT=0;
 const norm = s => s.toLowerCase().replace(/[’']/g,"").replace(/[^a-z0-9 ]+/g," ").replace(/\b(a|an|the)\b/g," ").replace(/\s+/g," ").trim();
 function lev(a,b){ const m=a.length,n=b.length; const d=Array.from({length:m+1},(_,i)=>[i]); for(let j=1;j<=n;j++) d[0][j]=j;
   for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1)); return d[m][n]; }
@@ -472,9 +427,14 @@ function confetti(n=140){
   if(!fxOn){ fxOn=true; requestAnimationFrame(tickFx); }
 }
 function tickFx(){
-  const dpr=devicePixelRatio||1; if(fx.width!==innerWidth*dpr){ fx.width=innerWidth*dpr; fx.height=innerHeight*dpr; }
+  // Round the canvas size: on phones with fractional pixel ratios the unrounded compare was true every frame,
+  // which reallocated the full-screen canvas 60 times a second.
+  const dpr=Math.min(2,devicePixelRatio||1), W=Math.round(innerWidth*dpr), H=Math.round(innerHeight*dpr);
+  if(fx.width!==W || fx.height!==H){ fx.width=W; fx.height=H; }
   fxg.setTransform(dpr,0,0,dpr,0,0); fxg.clearRect(0,0,innerWidth,innerHeight);
-  parts.forEach(p=>{ p.vy+=.45; p.vx*=.99; p.x+=p.vx; p.y+=p.vy; p.a+=p.va; p.life--; fxg.save(); fxg.translate(p.x,p.y); fxg.rotate(p.a); fxg.fillStyle=p.c; fxg.fillRect(-p.r/2,-p.r/4,p.r,p.r/2); fxg.restore(); });
+  for(const p of parts){ p.vy+=.45; p.vx*=.99; p.x+=p.vx; p.y+=p.vy; p.a+=p.va; p.life--;
+    const c=Math.cos(p.a)*dpr, s=Math.sin(p.a)*dpr; fxg.setTransform(c,s,-s,c,p.x*dpr,p.y*dpr); fxg.fillStyle=p.c; fxg.fillRect(-p.r/2,-p.r/4,p.r,p.r/2); }
+  fxg.setTransform(dpr,0,0,dpr,0,0);
   parts=parts.filter(p=>p.life>0 && p.y<innerHeight+40);
   if(parts.length) requestAnimationFrame(tickFx); else { fxOn=false; fxg.clearRect(0,0,innerWidth,innerHeight); }
 }
@@ -497,6 +457,7 @@ async function recordInto(key,btn,onDone){
   mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
   mr.onstop=async()=>{
     clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
+    if(releaseAfterRec) releaseMic();
     SFX.recOff(); buzz(20);
     try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await cleanBuf(await decode(await blob.arrayBuffer()))); S.turn[key]=buf; onDone(buf,blob); }
     catch(e){ S.micError="Could not read that recording. Try again."; render(); }
@@ -510,7 +471,9 @@ async function recordInto(key,btn,onDone){
   try{
     const c=ac(); if(!analyser || analyser._s!==s){ analyser=c.createAnalyser(); analyser.fftSize=512; c.createMediaStreamSource(s).connect(analyser); analyser._s=s; }
     const data=new Uint8Array(analyser.fftSize);
-    const loop=()=>{ analyser.getByteTimeDomainData(data); let m=0; for(const v of data){ const d=Math.abs(v-128)/128; if(d>m) m=d; } btn.style.setProperty("--lvl",Math.min(1,m*1.8).toFixed(2)); meterRaf=requestAnimationFrame(loop); };
+    let last=-1;
+    const loop=()=>{ analyser.getByteTimeDomainData(data); let m=0; for(let i=0;i<data.length;i++){ const d=Math.abs(data[i]-128); if(d>m) m=d; }
+      const lv=Math.round(Math.min(1,m/128*1.8)*20)/20; if(lv!==last){ last=lv; btn.style.setProperty("--lvl",lv); } meterRaf=requestAnimationFrame(loop); };
     loop();
   }catch(e){}
 }
@@ -524,18 +487,25 @@ const app=document.getElementById("app");
 const $=id=>document.getElementById(id);
 function topbar(){
   if(S.screen==="online") return onlineTopbar();
-  if(S.screen==="solo") return `<div class="bar"><div class="logo"><span></span><span>Back</span><span class="w">Words</span></div><div class="chip">Free play</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
-  if(S.screen==="daily") return `<div class="bar"><div class="logo"><span></span><span>Back</span><span class="w">Words</span></div><div class="chip">Daily${D.info?" #"+D.info.n:""}</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  if(S.screen==="solo") return `<div class="bar">${logoHTML()}<div class="chip">Free play</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  if(S.screen==="daily") return `<div class="bar">${logoHTML()}<div class="chip">Daily${D.info?" #"+D.info.n:""}</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
   const inGame = !["title","setup"].includes(S.screen);
   const sc = inGame && pts() ? `<div class="scores"><span class="s sa ${S.turnTeam===0&&S.screen!=="final"?"on":""}" id="sc0">${S.teams[0].score}</span><span class="dim">:</span><span class="s sb ${S.turnTeam===1&&S.screen!=="final"?"on":""}" id="sc1">${S.teams[1].score}</span></div>`
     : inGame ? `<div class="chip">Casual · turn ${S.history.length+1}</div>` : "";
-  return `<div class="bar"><div class="logo"><span></span><span>Back</span><span class="w">Words</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  return `<div class="bar">${logoHTML()}${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
 }
 let quitArmed=false;
-function menuHTML(){
-  return `<div class="overlay" id="ov"><div class="card">
-    <div class="row" style="align-items:center"><h2 style="flex:3">How to play</h2><button class="iconbtn" id="closeMenu" style="flex:none" aria-label="Close">✕</button></div>
-    <ul>
+// "Free" screens can be left at any time. Leaving an active game asks first (menu, tap twice to quit).
+const freeScreen = () => ["title","setup","daily","solo"].includes(S.screen) || (S.screen==="online" && !O.code);
+const logoHTML = () => `<button class="logo" id="homeBtn" aria-label="${S.screen==="title"?"BackWords":"Back to the home screen"}">${S.screen==="title"?"":`<span class="bk" aria-hidden="true">‹</span>`}<span>Back</span><span class="w">Words</span></button>`;
+function helpHTML(){
+  if(S.screen==="daily") return `<ul><li>One word a day, the same for everyone. A new one comes at midnight New York time.</li>
+      <li>Listen to it backward as often as you like. Slow it down if it helps.</li>
+      <li>Tap Say it back to copy the backward sound, then Flip mine to hear your copy forward.</li>
+      <li>You get 5 guesses, and a new hint after each miss.</li></ul>`;
+  if(S.screen==="solo") return `<ul><li>A random word from the list, played backward.</li>
+      <li>Say it back and flip your copy to hear it forward.</li><li>Guess as many times as you like. Hints and Reveal are there if you're stuck.</li></ul>`;
+  return `<ul>
       <li>2 teams of 2. Teams take turns; teammates swap roles each time.</li>
       <li>The other team picks a word in the category (or the app draws one).</li>
       <li>The Speaker says it, hears it backward as many times as they want, then says the backward version from memory.</li>
@@ -543,26 +513,68 @@ function menuHTML(){
       <li>Points mode: bet 1 to 6 syllables. Win ${PTS_PER_SYL} points per syllable, miss and lose half.</li>
     </ul>
     <p class="lbl">Still to decide <span class="tag">GUESS</span></p>
-    <ul><li>Guesser hears the clip ${S.guesserPlays||"unlimited"} time${S.guesserPlays===1?"":"s"}.</li><li>One typed guess. Close spellings count, and you can overrule the call.</li><li>${S.rounds} rounds, no timer, no steals.</li></ul>
-    <div class="row"><button class="btn ghost" id="muteBtn">${S.muted?"🔇 Sound off":"🔊 Sound on"}</button>
-    ${["title","setup"].includes(S.screen)?"":`<button class="btn ghost" id="quitBtn">${quitArmed?"Tap again to quit":"Quit game"}</button>`}</div>
+    <ul><li>Guesser hears the clip ${S.guesserPlays||"unlimited"} time${S.guesserPlays===1?"":"s"}.</li><li>One typed guess. Close spellings count, and you can overrule the call.</li><li>${S.rounds} rounds, no timer, no steals.</li></ul>`;
+}
+function menuHTML(){
+  const leave = S.screen==="title" ? "" : freeScreen() ? `<button class="btn ghost" id="quitBtn">Home</button>`
+    : `<button class="btn ghost" id="quitBtn">${quitArmed?"Tap again to quit":S.screen==="online"?"Leave room":"Quit game"}</button>`;
+  return `<div class="overlay" id="ov"><div class="card">
+    <div class="row" style="align-items:center"><h2 style="flex:3">How to play</h2><button class="iconbtn" id="closeMenu" style="flex:none" aria-label="Close">✕</button></div>
+    ${helpHTML()}
+    <div class="row"><button class="btn ghost" id="muteBtn">${S.muted?"🔇 Sound off":"🔊 Sound on"}</button>${leave}</div>
   </div></div>`;
 }
-let KEEP_AUDIO=false;
+// The menu is an overlay on top of the current screen. Opening or closing it does not rebuild the
+// screen underneath, so a clip keeps playing, a recording keeps going and typed text stays.
+function openMenu(){
+  closeMenu(); S.menu=true; quitArmed=false;
+  app.insertAdjacentHTML("beforeend",menuHTML()); bindMenu();
+}
+function closeMenu(){ S.menu=false; const o=$("ov"); if(o) o.remove(); }
+function refreshMenu(){ const o=$("ov"); if(!o) return; o.outerHTML=menuHTML(); bindMenu(); }
+function bindMenu(){
+  $("ov").onclick=e=>{ if(e.target.id==="ov") closeMenu(); };
+  $("closeMenu").onclick=closeMenu;
+  $("muteBtn").onclick=()=>{ S.muted=!S.muted; saveSetup(); refreshMenu(); };
+  const q=$("quitBtn"); if(q) q.onclick=()=>{
+    if(!freeScreen() && !quitArmed){ quitArmed=true; refreshMenu(); return; }
+    closeMenu(); home();
+  };
+}
+function home(){
+  stopRec(); stopPlay();
+  if(S.screen==="online") leaveRoom();
+  if(S.screen==="setup") keepSetup();
+  S.menu=false; S.screen="title"; releaseMic(); keepAwake(false); render(); window.scrollTo(0,0);
+  popNav();
+}
+let KEEP_AUDIO=false, lastKey="";
 function render(){
   if(!KEEP_AUDIO) stopPlay();
   document.body.dataset.team = S.screen==="online" ? String(onlineTeamColor()) : ["title","setup","daily","solo"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
   const v=VIEWS[S.screen]();
-  app.innerHTML = topbar() + `<section class="stage ${v.cls||""}">${v.html}</section>` + (S.menu?menuHTML():"");
-  $("menuBtn").onclick=()=>{ SFX.tap(); S.menu=true; quitArmed=false; render(); };
-  if(S.menu){
-    $("closeMenu").onclick=()=>{ S.menu=false; render(); };
-    $("muteBtn").onclick=()=>{ S.muted=!S.muted; saveSetup(); render(); };
-    const q=$("quitBtn"); if(q) q.onclick=()=>{ if(!quitArmed){ quitArmed=true; render(); return; } S.menu=false; if(S.screen==="online") leaveRoom(); S.screen="title"; render(); };
-  }
+  // Only animate the screen in when it is a new screen. Same-screen updates swap in place.
+  const key=S.screen+"|"+(v.key||""), still=key===lastKey; lastKey=key;
+  app.innerHTML = topbar() + `<section class="stage ${v.cls||""}${still?" still":""}">${v.html}</section>` + (S.menu?menuHTML():"");
+  $("menuBtn").onclick=()=>{ SFX.tap(); openMenu(); };
+  $("homeBtn").onclick=()=>{ if(S.screen==="title") return; SFX.tap(); if(freeScreen()) home(); else openMenu(); };
+  if(S.menu) bindMenu();
   v.bind && v.bind();
 }
-function go(screen,sfx){ if(sfx) SFX[sfx](); S.screen=screen; render(); window.scrollTo(0,0); }
+// Back button / back swipe: one history entry stands for "inside the app". Back from a free screen goes
+// home; back during a game opens the menu instead of dropping everyone out of the game.
+const inNav = () => !!(history.state && history.state.bw);
+let skipPop=false, pushAfterPop=false;
+function pushNav(){ if(skipPop){ pushAfterPop=true; return; } if(!inNav()) try{ history.pushState({bw:1},"",location.href); }catch(e){} }
+function popNav(){ if(inNav()){ skipPop=true; history.back(); } }
+addEventListener("popstate",()=>{
+  if(skipPop){ skipPop=false; if(pushAfterPop){ pushAfterPop=false; if(S.screen!=="title") pushNav(); } return; }
+  if(S.menu){ closeMenu(); if(S.screen!=="title") pushNav(); return; }
+  if(S.screen==="title") return;
+  if(freeScreen()){ home(); return; } // the history entry is already gone, so home() does not go back again
+  pushNav(); openMenu();
+});
+function go(screen,sfx){ if(sfx) SFX[sfx](); if(screen==="title"){ home(); return; } S.screen=screen; render(); window.scrollTo(0,0); pushNav(); }
 const seg=(id,opts,cur)=>`<div class="seg" id="${id}" role="radiogroup">${opts.map(([v,l])=>`<button type="button" role="radio" aria-checked="${String(v)===String(cur)}" data-v="${v}">${l}</button>`).join("")}</div>`;
 function bindSeg(id,fn){ $(id).querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); fn(b.dataset.v); render(); }); }
 function countUp(el,from,to){ if(!el) return; const t0=performance.now(), d=700; const f=now=>{ const k=Math.min(1,(now-t0)/d); el.textContent=Math.round(from+(to-from)*(1-Math.pow(1-k,3))); if(k<1) requestAnimationFrame(f); }; requestAnimationFrame(f); }
@@ -581,7 +593,7 @@ function afterBet(){
 const VIEWS = {
   title(){
     return { cls:"center", html:`<div class="title"><h1 class="huge">BackWords</h1><h1 class="huge mirror" aria-hidden="true">BackWords</h1></div>
-      ${WORD_COUNT?`<span class="chip">${WORD_COUNT.toLocaleString()} words and phrases</span>`:""}<p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
+      <span class="chip" id="wcount" style="${WORD_COUNT?"":"visibility:hidden"}">${WORD_COUNT?WORD_COUNT.toLocaleString():"0,000"} words and phrases</span><p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
       ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKWORD</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
         if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); openDaily(); };
@@ -599,19 +611,21 @@ const VIEWS = {
       <div class="card">
         <span class="lbl">Mode</span>${seg("mode",[["points","🏆 Points"],["casual","🎉 Casual"]],S.mode)}
         <span class="lbl">Who picks the word</span>${seg("source",[["opponent","Other team"],["random","Random"]],S.source)}
-        <span class="lbl">Category</span>${seg("cat",[...CATS.map(c=>[c,c]),["Mixed","Mixed"]],S.category)}
+        <span class="lbl">Category</span>${CATS.length?seg("cat",[...CATS.map(c=>[c,c]),["Mixed","Mixed"]],S.category):`<div class="dots" style="color:var(--a);justify-content:flex-start"><i></i><i></i><i></i></div>`}
         <span class="lbl">Guesser hears the clip</span>${seg("gp",[[1,"1×"],[2,"2×"],[0,"∞"]],S.guesserPlays)}
         ${pts()?`<span class="lbl">Rounds</span>${seg("rounds",[[2,"2"],[4,"4"],[6,"6"],[8,"8"]],S.rounds)}`:""}
       </div>
       ${S.micError?`<p class="err">${esc(S.micError)}</p>`:""}
-      <button class="btn" id="start">LET'S GO</button>`,
+      <button class="btn" id="start">LET'S GO</button><button class="link" id="back">Back</button>`,
       bind(){
-        const keep=()=>S.teams.forEach((t,i)=>{ t.name=$("t"+i).value.trim()||["Red","Blue"][i]; t.players=[0,1].map(j=>$(`t${i}p${j}`).value.trim()||`Player ${i*2+j+1}`); });
-        bindSeg("mode",v=>{keep();S.mode=v;}); bindSeg("source",v=>{keep();S.source=v;}); bindSeg("cat",v=>{keep();S.category=v;});
+        const keep=keepSetup;
+        bindSeg("mode",v=>{keep();S.mode=v;}); bindSeg("source",v=>{keep();S.source=v;}); if($("cat")) bindSeg("cat",v=>{keep();S.category=v;});
         bindSeg("gp",v=>{keep();S.guesserPlays=+v;}); if($("rounds")) bindSeg("rounds",v=>{keep();S.rounds=+v;});
-        $("start").onclick=async()=>{ keep(); saveSetup(); ac(); S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[];
-          try{ navigator.wakeLock && navigator.wakeLock.request("screen").catch(()=>{}); }catch(e){}
-          newTurn(); go("splash","slam"); };
+        $("start").onclick=async()=>{ keep(); saveSetup(); ac();
+          if(!wordsLoaded){ const b=$("start"); b.disabled=true; b.textContent="LOADING WORDS…"; await wordsReady; if(S.screen!=="setup") return; }
+          S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[];
+          keepAwake(true); newTurn(); go("splash","slam"); };
+        $("back").onclick=()=>{ keep(); saveSetup(); home(); };
       } };
   },
   splash(){
@@ -664,7 +678,7 @@ const VIEWS = {
       ${t.drawn?`<button class="btn ghost" id="shuffle" style="width:auto;padding:10px 18px">🔀 Shuffle</button>`:""}
       ${micHTML("Tap to record",false)}`,
       bind(){ if(t.drawn) $("shuffle").onclick=()=>{ Object.assign(t,drawWord(t.cat,pts()?t.level:null)); SFX.whoosh(); buzz(15); render(); };
-        const m=$("mic"); m.onclick=()=>recordInto("orig",m,buf=>{ t.origRev=reverseBuf(buf); t.sPlays=S.speakerPlays; t.copy=null; setTimeout(()=>go("listen","rewind"),250); }); } };
+        const m=$("mic"); m.onclick=()=>recordInto("orig",m,buf=>{ t.origRev=reverseBuf(buf); t.autoRev=false; t.copy=null; setTimeout(()=>go("listen","rewind"),250); }); } };
   },
   listen(){
     const t=S.turn, done=!!t.copy;
@@ -675,7 +689,9 @@ const VIEWS = {
       ${done?`<button class="btn ghost" id="mine">▶ Hear my take</button><button class="btn team" id="send">SEND TO ${esc(guesser().toUpperCase())}</button>`:""}
       <button class="link" id="redo">Redo the normal recording</button>`,
       bind(){
-        const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(t.origRev,()=>p.classList.remove("spin")); };
+        const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(t.origRev,()=>{ const q=$("pl"); if(q) q.classList.remove("spin"); }); };
+        // Play the backward clip once by itself on arrival: it is the first thing every Speaker taps.
+        if(!t.autoRev && !done){ t.autoRev=true; setTimeout(()=>{ const q=$("pl"); if(S.screen==="listen" && S.turn===t && q && !activeRec && !playing) q.click(); },650); }
         const m=$("mic"); m.onclick=()=>{ if(done && !activeRec){ t.copy=null; m.classList.remove("done"); } recordInto("copy",m,buf=>{ t.copyFlip=reverseBuf(buf); render(); }); };
         if(done){ $("mine").onclick=()=>{ if(activeRec) return; buzz(10); play(t.copy); }; $("send").onclick=()=>go("handGss","slam"); }
         $("redo").onclick=()=>go("say");
@@ -770,19 +786,34 @@ const dsave = (k,v) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch(
 function dstate(){ const s=dload(DKEY,null); return s && D.info && s.n===D.info.n ? s : { n:D.info?D.info.n:0, guesses:[], hints:[], misses:0, over:false, won:false, word:"", listens:0 }; }
 function dstats(){ return dload(DSTATS,{ played:0, wins:0, streak:0, best:0, lastWin:0, lastPlayed:0 }); }
 
-async function openDaily(){
-  S.turn = D.local; D.err=""; go("daily","whoosh");
-  if(D.info && D.rev && D.info.date===todayNY()) return;
-  D.loading=true; D.rev=null; D.fwd=null; render();
-  try{
-    const r=await fetch("/api/daily",{cache:"no-store"}); if(!r.ok) throw new Error("Could not load today's word.");
-    D.info=await r.json();
-    const a=await fetch("/api/daily/audio"); if(!a.ok) throw new Error("Today's clip isn't ready yet. Try again in a minute.");
-    const buf=trimBuf(await decode(await a.arrayBuffer()));
-    D.fwd=buf; D.rev=reverseBuf(buf);
-  }catch(e){ D.err=e.message||"Something went wrong."; }
-  D.loading=false; if(S.screen==="daily") render();
+// Today's word and clip are downloaded in parallel, and quietly ahead of time while the home screen is
+// idle, so tapping Daily usually opens straight to the puzzle.
+let dailyPre=null;
+function fetchDaily(){
+  if(dailyPre && dailyPre.day===todayNY()) return dailyPre.p;
+  const p=Promise.all([
+    fetch("/api/daily",{cache:"no-store"}).then(r=>{ if(!r.ok) throw new Error("Could not load today's word."); return r.json(); }),
+    fetch("/api/daily/audio").then(r=>{ if(!r.ok) throw new Error("Today's clip isn't ready yet. Try again in a minute."); return r.arrayBuffer(); })
+  ]);
+  dailyPre={p,day:todayNY()}; p.catch(()=>{ if(dailyPre && dailyPre.p===p) dailyPre=null; });
+  return p;
 }
+function prefetchDaily(){ if(ONLINE_OK && !(D.info && D.rev)) fetchDaily().catch(()=>{}); }
+async function openDaily(){
+  S.turn = D.local; D.err="";
+  const fresh = D.info && D.rev && D.info.date===todayNY();
+  if(!fresh){ D.loading=true; D.rev=null; D.fwd=null; }
+  go("daily","whoosh");
+  if(fresh) return;
+  try{
+    const [info,bytes]=await fetchDaily();
+    const buf=trimBuf(await decode(bytes.slice(0)));
+    D.info=info; D.fwd=buf; D.rev=reverseBuf(buf);
+  }catch(e){ D.err=e.message||"Something went wrong."; dailyPre=null; }
+  D.loading=false; if(S.screen==="daily") render();
+  if(D.rev) idle(()=>atSpeed("rev")); // prepare the slowed clip before the first tap
+}
+const idle = f => (window.requestIdleCallback||(g=>setTimeout(g,200)))(f);
 const todayNY = () => { try{ return new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York"}).format(new Date()); }catch(e){ return ""; } };
 function untilNext(){
   try{
@@ -796,7 +827,7 @@ async function dailyGuess(text){
   D.busy=true; render();
   try{
     const r=await fetch("/api/daily/guess",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({n:D.info.n,guess:text,misses:st.misses})});
-    if(r.status===409){ D.info=null; D.busy=false; openDaily(); return; }
+    if(r.status===409){ D.info=null; dailyPre=null; D.busy=false; openDaily(); return; }
     const j=await r.json();
     st.guesses.push({ text:text.trim(), ok:j.correct, fb:j.fb }); st.hints=j.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
     if(j.over){ st.over=true; st.won=j.correct; st.word=j.word;
@@ -813,8 +844,8 @@ function shareText(st){
 }
 
 VIEWS.daily = function(){
-  if(D.loading || (!D.info && !D.err)) return { cls:"center", html:`<span class="kicker">Daily BackWord</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
-  if(D.err && !D.rev) return { cls:"center", html:`<span class="kicker">Daily BackWord</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
+  if(D.loading || (!D.info && !D.err)) return { cls:"center", key:"load", html:`<span class="kicker">Daily BackWord</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
+  if(D.err && !D.rev) return { cls:"center", key:"err", html:`<span class="kicker">Daily BackWord</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
     bind(){ $("retry").onclick=()=>{ D.info=null; openDaily(); }; $("home").onclick=()=>go("title"); } };
   const st=dstate(), max=D.info.maxGuesses, left=max-st.guesses.length;
   if(!st.listens && D.listens) st.listens=D.listens;
@@ -824,7 +855,7 @@ VIEWS.daily = function(){
   const hints = st.hints.map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
   if(st.over){
     const s=dstats();
-    return { cls:"center", html:`<span class="kicker">Daily BackWord #${D.info.n}</span>
+    return { cls:"center", key:"over", html:`<span class="kicker">Daily BackWord #${D.info.n}</span>
       <h2 class="big-t">${st.won?(st.guesses.length===1?"First try!":"Got it!"):"Not today"}</h2>
       <div class="word sm">${esc(st.word)}</div>
       <div class="lrow"><button class="play sm" id="fwd" aria-label="Play forward">${ICON.play}</button><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button></div>
@@ -882,17 +913,33 @@ function soloPick(){
 async function soloLoad(item){
   const r=await fetch("/api/say?w="+encodeURIComponent(item.word)); if(!r.ok) throw new Error("The voice didn't load. Tap Next word to try another.");
   const buf=trimBuf(await decode(await r.arrayBuffer()));
-  item.fwd=buf; item.rev=reverseBuf(buf); return item;
+  item.fwd=buf; item.rev=reverseBuf(buf);
+  soloSpeed(item.rev); // slow it down now, in the background, not on the first tap
+  return item;
 }
-function soloPrefetch(){ const n=soloPick(); P.next=n; soloLoad(n).catch(()=>{ if(P.next===n) P.next=null; }); }
+// The next word is fetched while the current one is played. Its promise is kept, so tapping Next or Skip
+// while it is still downloading waits for that download instead of starting a second one.
+function soloPrefetch(){ const n=soloPick(), cat=P.cat; P.next={cat,p:soloLoad(n)}; P.next.p.catch(()=>{ if(P.next && P.next.cat===cat) P.next=null; }); }
+let soloSeq=0;
 async function soloNext(){
-  P.guesses=[]; P.hints=0; P.done=false; P.won=false; P.draft=""; P.err=""; P.local={}; S.turn=P.local;
-  let item = P.next && P.next.rev ? P.next : null; P.next=null;
-  if(!item){ P.loading=true; render(); try{ item=await soloLoad(soloPick()); }catch(e){ P.err=e.message; } P.loading=false; }
-  P.cur=item; render(); soloPrefetch();
-  if(item && item.rev) setTimeout(()=>{ if(S.screen==="solo" && P.cur===item) play(soloSpeed(item.rev)); },350);
+  const seq=++soloSeq;
+  const pre = P.next && P.next.cat===P.cat ? P.next.p : null; P.next=null;
+  let item=null, err="";
+  P.loading=true;
+  // Show the loading screen only if the word is not ready within a moment, so a prefetched word appears without a flash.
+  const slow=setTimeout(()=>{ if(P.loading && S.screen==="solo") render(); },120);
+  try{
+    if(!wordsLoaded) await wordsReady;
+    item = pre ? await pre.catch(()=>null) : null;
+    if(!item) item=await soloLoad(soloPick());
+  }catch(e){ err=e.message; }
+  clearTimeout(slow);
+  if(seq!==soloSeq) return; // a newer Next/Skip/category tap took over
+  P.guesses=[]; P.hints=0; P.done=false; P.won=false; P.draft=""; P.err=err; P.local={}; S.turn=P.local;
+  P.loading=false; P.cur=item; if(S.screen!=="solo") return; render(); soloPrefetch();
+  if(item && item.rev) setTimeout(()=>{ if(S.screen==="solo" && P.cur===item && !activeRec) play(soloSpeed(item.rev)); },250);
 }
-function openSolo(){ go("solo","whoosh"); if(!P.cur || P.done) soloNext(); }
+function openSolo(){ const need=!P.cur || P.done; if(need) P.loading=true; S.turn=P.local; go("solo","whoosh"); if(need) soloNext(); }
 
 function soloFeedback(guess, answer){
   const toks=w=>w.toLowerCase().replace(/[’']/g,"").replace(/[^a-z0-9 ]+/g," ").split(/\s+/).filter(Boolean);
@@ -914,33 +961,33 @@ function soloHints(){
     `Looks like: ${words.map(x=>x.length>1?x[0].toUpperCase()+x.slice(1,-1).replace(/[a-z0-9]/gi,"_")+x.slice(-1):x.toUpperCase()).join(" ")}` ].slice(0,P.hints);
 }
 function soloGuess(){
-  const t=P.draft.trim(); if(!t || P.done) return;
+  const t=P.draft.trim(); if(!t || P.done || P.loading || !P.cur) return;
   const ok=judge(t,P.cur.word);
   P.guesses.push({ text:t, ok, fb: ok?null:soloFeedback(t,P.cur.word) }); P.draft="";
   if(ok){ P.done=true; P.won=true; P.solved++; P.played++; P.run++; SFX.win(); confetti(); buzz([40,60,40]); }
   else { SFX.lose(); buzz(80); }
   render();
 }
-function soloGiveUp(){ if(P.done) return; P.done=true; P.won=false; P.played++; P.run=0; SFX.lose(); render(); }
+function soloGiveUp(){ if(P.done || P.loading) return; P.done=true; P.won=false; P.played++; P.run=0; SFX.lose(); render(); }
 
 VIEWS.solo = function(){
   const catSeg = `<div class="seg speed" id="scat">${[...CATS,"Mixed"].map(c=>`<button type="button" role="radio" aria-checked="${c===P.cat}" data-v="${esc(c)}">${esc(c)}</button>`).join("")}</div>`;
   const tally = `<p class="dim" style="margin:0">Solved ${P.solved} of ${P.played}${P.run>1?` · ${P.run} in a row`:""}</p>`;
-  if(P.loading || !P.cur) return { cls:"center", html:`<span class="kicker">Free play</span>${P.err?`<p class="err">${esc(P.err)}</p><button class="btn" id="nx">NEXT WORD</button>`:`<h2 class="big-t">Getting a word…</h2><div class="dots"><i></i><i></i><i></i></div>`}`,
+  if(P.loading || !P.cur) return { cls:"center", key:"load", html:`<span class="kicker">Free play</span>${P.err?`<p class="err">${esc(P.err)}</p><button class="btn" id="nx">NEXT WORD</button>`:`<h2 class="big-t">Getting a word…</h2><div class="dots"><i></i><i></i><i></i></div>`}`,
     bind(){ if($("nx")) $("nx").onclick=()=>soloNext(); } };
   const c=P.cur;
   const rows=P.guesses.filter(g=>!g.ok).map(g=>`<div class="drow no"><div class="fbw">${g.fb.words.map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div><em class="heat h${g.fb.level}">${esc(g.fb.heat)}</em></div>`).join("");
-  if(P.done) return { cls:"center", html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
+  if(P.done) return { cls:"center", key:"done|"+c.word, html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
       <h2 class="big-t">${P.won?(P.guesses.length===1?"First try!":"Got it!"):"It was"}</h2>
       <div class="word sm">${esc(c.word)}</div>
       <div class="lrow"><button class="play sm" id="fwd" aria-label="Play forward">${ICON.play}</button><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button></div>
       ${tally}
       <button class="btn" id="nx">NEXT WORD</button>
       <button class="link" id="home">Back to menu</button>`,
-    bind(){ $("fwd").onclick=()=>play(soloSpeed(c.fwd)); $("pl").onclick=()=>play(soloSpeed(c.rev)); $("nx").onclick=()=>{ SFX.whoosh(); soloNext(); }; $("home").onclick=()=>go("title"); } };
+    bind(){ $("fwd").onclick=()=>play(soloSpeed(c.fwd)); $("pl").onclick=()=>play(soloSpeed(c.rev)); $("nx").onclick=()=>{ if(P.loading) return; SFX.whoosh(); soloNext(); }; $("home").onclick=()=>go("title"); } };
   const hints=soloHints().map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
   const legend=rows?`<p class="dim legend"><i class="fb-g">right spot</i> <i class="fb-y">wrong spot</i> <i class="fb-n">almost</i> <i class="fb-x">not in it</i></p>`:"";
-  return { cls:"center", html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
+  return { cls:"center", key:"play|"+c.word, html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
     ${catSeg}
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">A random word, played backward. Listen as much as you want.</p></div>
     ${speedSeg()}
@@ -953,19 +1000,20 @@ VIEWS.solo = function(){
     bind(){
       const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(soloSpeed(c.rev),()=>p.classList.remove("spin")); };
       $("speed").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed2",D.speed); }catch(e){} render(); play(soloSpeed(c.rev)); });
-      $("scat").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); P.cat=b.dataset.v; try{ localStorage.setItem("bw-solo-cat",P.cat); }catch(e){} P.next=null; soloNext(); });
+      $("scat").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); P.cat=b.dataset.v; try{ localStorage.setItem("bw-solo-cat",P.cat); }catch(e){}
+        $("scat").querySelectorAll("button").forEach(x=>x.setAttribute("aria-checked",String(x===b))); stopPlay(); P.next=null; soloNext(); });
       const r=$("rec"); r.onclick=()=>recordInto("rec",r,buf=>{ P.local.mine=reverseBuf(buf); render(); });
       if(P.local.mine) $("flip").onclick=()=>{ if(activeRec) return; play(P.local.mine); };
       const g=$("dg"); g.oninput=()=>P.draft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("go").click(); };
       $("go").onclick=()=>{ if(!P.draft.trim()){ g.focus(); return; } soloGuess(); };
       $("hint").onclick=()=>{ SFX.tap(); P.hints=Math.min(4,P.hints+1); render(); };
       $("give").onclick=()=>soloGiveUp();
-      $("skip").onclick=()=>{ SFX.whoosh(); P.played++; P.run=0; soloNext(); };
+      $("skip").onclick=()=>{ if(P.loading) return; SFX.whoosh(); P.played++; P.run=0; soloNext(); };
     } };
 };
 
 // ================= Online mode: every player on their own phone =================
-const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, mimic:false, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
+const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
 try{ O.pid = localStorage.getItem("rvg-pid") || ""; O.name = localStorage.getItem("rvg-name") || ""; }catch(e){}
 if(!O.pid){ O.pid = Math.random().toString(36).slice(2,12)+Date.now().toString(36); try{ localStorage.setItem("rvg-pid",O.pid); }catch(e){} }
 const ONLINE_OK = location.protocol.startsWith("http") && !/claudeusercontent|claude\.ai/.test(location.hostname);
@@ -987,27 +1035,31 @@ function newCode(){ const A="BCDFGHJKLMNPQRSTVWXZ"; let c=""; for(let i=0;i<4;i+
 
 function connect(code){
   O.code = code; O.closed=false; O.err="";
-  try{ history.replaceState(null,"","?room="+code); }catch(e){}
+  try{ history.replaceState(history.state,"","?room="+code); }catch(e){}
   const ws = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/api/room/"+code+"/ws?pid="+encodeURIComponent(O.pid));
   O.ws = ws;
-  ws.onopen = ()=>{ O.retry=0; send({type:"hello", name:O.name}); };
+  ws.onopen = ()=>{ if(ws!==O.ws) return; O.retry=0; send({type:"hello", name:O.name}); };
   ws.onmessage = ev => {
+    if(ws!==O.ws) return;
     let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
     if(m.type==="state"){ const prev=O.st; O.st=m.state; onState(prev); }
-    else if(m.type==="play"){ playGuesserClip(); }
+    else if(m.type==="play"){ if(O.selfPlay && Date.now()-O.selfPlay<8000){ O.selfPlay=0; } else playGuesserClip(); }
     else if(m.type==="error"){ O.err=m.message; orender(); }
   };
-  ws.onclose = ()=>{ if(O.closed) return; O.retry++; setTimeout(()=>{ if(!O.closed) connect(O.code); }, Math.min(5000, 500*O.retry)); };
+  ws.onclose = ()=>{ if(O.closed || ws!==O.ws) return; O.retry++; clearTimeout(O.rt); O.rt=setTimeout(()=>{ if(!O.closed && ws===O.ws) connect(O.code); }, Math.min(5000, 500*O.retry)); };
 }
-function leaveRoom(){ O.closed=true; try{ O.ws && O.ws.close(); }catch(e){} O.ws=null; O.st=null; O.clips={}; O.local={}; try{ history.replaceState(null,"",location.pathname); }catch(e){} }
+function leaveRoom(){ O.closed=true; clearTimeout(O.rt); try{ O.ws && O.ws.close(); }catch(e){} O.ws=null; O.code=""; O.st=null; O.clips={}; O.local={}; try{ history.replaceState(history.state,"",location.pathname); }catch(e){} }
 
-async function getClip(kind){
+// One download and decode per clip version: the background prefetch and a tap share the same promise.
+function getClip(kind){
   const key=kind+":"+O.st.clipVer;
-  if(O.clips[key]) return O.clips[key];
-  const r = await fetch("/api/room/"+O.code+"/clip/"+kind,{cache:"no-store"});
-  if(!r.ok) throw new Error("clip "+r.status);
-  const buf = trimBuf(await cleanBuf(await decode(await r.arrayBuffer())));
-  const v = {buf, rev:reverseBuf(buf)}; O.clips[key]=v; return v;
+  if(!O.clips[key]) O.clips[key]=(async()=>{
+    const r = await fetch("/api/room/"+O.code+"/clip/"+kind,{cache:"no-store"});
+    if(!r.ok) throw new Error("clip "+r.status);
+    const buf = trimBuf(await cleanBuf(await decode(await r.arrayBuffer())));
+    return {buf, rev:reverseBuf(buf)};
+  })().catch(e=>{ delete O.clips[key]; throw e; });
+  return O.clips[key];
 }
 async function upload(kind, blob){
   const r = await fetch("/api/room/"+O.code+"/clip/"+kind+"?pid="+encodeURIComponent(O.pid),{method:"PUT",body:blob,headers:{"Content-Type":blob.type||"audio/webm"}});
@@ -1019,10 +1071,9 @@ async function playGuesserClip(){
 }
 
 // Re-render without cutting off audio or a recording in progress, and keep typing focus.
-let pendingRender=false;
 function orender(){
   if(S.screen!=="online") return;
-  if(activeRec){ pendingRender=true; return; }
+  if(activeRec) return; // the recording's own callback re-renders when it stops
   const f=document.activeElement, fid=f&&f.id, sel=f&&f.selectionStart;
   KEEP_AUDIO=true; render(); KEEP_AUDIO=false;
   if(fid){ const el=$(fid); if(el && el.tagName==="INPUT"){ el.focus(); try{ el.setSelectionRange(sel,sel); }catch(e){} } }
@@ -1030,7 +1081,7 @@ function orender(){
 function onState(prev){
   const s=O.st, t=s.turn;
   // new turn: clear local recordings
-  if(!prev || !prev.turn || !t || prev.turn.n!==t.n){ O.local={}; O.mimic=false; O.pickDraft=""; O.guessDraft=""; }
+  if(!prev || !prev.turn || !t || prev.turn.n!==t.n){ O.local={}; O.clips={}; O.pickDraft=""; O.guessDraft=""; }
   if(prev && prev.phase!==s.phase){
     if(s.phase==="bet"||s.phase==="pick") SFX.slam();
     if(s.phase==="speak"||s.phase==="guess") SFX.whoosh();
@@ -1051,7 +1102,7 @@ function onlineTopbar(){
   const sc = !s ? "" : s.phase==="lobby" ? `<div class="chip">Room ${esc(O.code)}</div>`
     : s.settings.mode==="points" ? `<div class="scores"><span class="s sa ${s.turnTeam===0?"on":""}">${s.scores[0]}</span><span class="dim">:</span><span class="s sb ${s.turnTeam===1?"on":""}">${s.scores[1]}</span></div>`
     : `<div class="chip">Room ${esc(O.code)}</div>`;
-  return `<div class="bar"><div class="logo"><span></span><span>Back</span><span class="w">Words</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  return `<div class="bar">${logoHTML()}${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
 }
 
 const av = (id,big) => `<div class="av" style="${big?"width:90px;height:90px;font-size:2.6rem":""}">${esc(oname(id).slice(0,1).toUpperCase())}</div>`;
@@ -1060,8 +1111,9 @@ const errHTML = () => O.err?`<p class="err">${esc(O.err)}</p>`:"";
 
 VIEWS.online = function(){
   const s=O.st;
-  if(!s) return O.code ? { cls:"center", html: waitCard("Joining "+esc(O.code)+"…","") } : onlineJoin();
+  if(!s) return O.code ? { cls:"center", key:"joining", html: waitCard("Joining "+esc(O.code)+"…","") } : onlineJoin();
   const v = (ONLINE_VIEWS[s.phase]||ONLINE_VIEWS.lobby)();
+  const t=s.turn; v.key = s.phase+"|"+(t?t.n:"")+"|"+(s.phase==="speak"&&t&&t.speakerId===O.pid ? (!t.clips.orig?1:O.local.origRev?2:3) : "");
   const inner=v.bind;
   v.bind=()=>{ document.body.dataset.team=String(onlineTeamColor()); inner&&inner(); };
   return v;
@@ -1112,7 +1164,7 @@ const ONLINE_VIEWS = {
           const set=x=>send({type:"settings",settings:Object.assign({},st,x)});
           const segb=(id,fn)=>$(id)&&$(id).querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); fn(b.dataset.v); });
           segb("mode",v=>set({mode:v})); segb("source",v=>set({source:v})); segb("cat",v=>set({category:v})); segb("gp",v=>set({guesserPlays:+v})); segb("rounds",v=>set({rounds:+v}));
-          $("start").onclick=()=>{ ac(); SFX.go(); try{ navigator.wakeLock && navigator.wakeLock.request("screen").catch(()=>{}); }catch(e){} send({type:"start"}); };
+          $("start").onclick=()=>{ ac(); SFX.go(); keepAwake(true); send({type:"start"}); };
         }
       } };
   },
@@ -1167,18 +1219,19 @@ const ONLINE_VIEWS = {
     const done=t.clips.copy;
     return { cls:"center", html:`<span class="kicker">You're the Speaker · now say it BACKWARD</span>
       <div class="word sm">${esc(t.word)}</div>
-      <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Tap to hear it backward. Listen as many times as you want.</p></div>
+      <div class="lrow"><button class="play sm ${playing&&playing.buffer===L.origRev?"spin":""}" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Tap to hear it backward. Listen as many times as you want.</p></div>
       ${micHTML(L.uploading?"Sending…":done?"Recorded! Tap to redo":"Tap to record your backward version",done)}
       ${done&&L.copy?`<button class="btn ghost" id="mine">▶ Hear my take</button>`:""}
       ${done?`<button class="btn team" id="send">SEND TO ${esc(oname(t.guesserId).toUpperCase())}</button>`:""}
       <button class="link" id="redo">Redo the normal recording</button>${errHTML()}`,
       bind(){
-        const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(L.origRev,()=>p.classList.remove("spin")); };
+        const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(L.origRev,()=>{ const q=$("pl"); if(q) q.classList.remove("spin"); }); };
+        if(!L.autoRev && !done){ L.autoRev=true; setTimeout(()=>{ const q=$("pl"); if(S.screen==="online" && O.local===L && q && !activeRec && !playing) q.click(); },650); }
         const m=$("mic"); m.onclick=()=>{ if(done && !activeRec) m.classList.remove("done");
           recordInto("copy",m,async(buf,blob)=>{ L.uploading=true; orender(); try{ await upload("copy",blob); O.err=""; }catch(e){ O.err=e.message; } L.uploading=false; orender(); }); };
         if(done && L.copy) $("mine").onclick=()=>{ if(activeRec) return; buzz(10); play(L.copy); };
         if(done) $("send").onclick=()=>{ SFX.go(); send({type:"send"}); };
-        $("redo").onclick=()=>{ L.origRev=null; L.copy=null; send({type:"redoOrig"}); };
+        $("redo").onclick=()=>{ L.origRev=null; L.copy=null; L.autoRev=false; send({type:"redoOrig"}); };
       } };
   },
   guess(){
@@ -1188,13 +1241,14 @@ const ONLINE_VIEWS = {
       return { cls:"center", html: waitCard(`${esc(oname(t.guesserId))} is guessing`, sub, t.guesserId) };
     }
     return { cls:"center", html:`<span class="kicker">You're the Guesser · ${esc(t.cat)}${opts()?` · ${t.level} syllables`:""}</span><h2 class="big-t">What did ${esc(oname(t.speakerId))} say?</h2>
-      <button class="play" id="pl" ${!lim||left?"":"disabled"} aria-label="Play clip">${ICON.play}</button>
+      <button class="play ${playing?"spin":""}" id="pl" ${(!lim||left)&&!playing?"":"disabled"} aria-label="Play clip">${ICON.play}</button>
       ${lim?`<div class="pips">${Array.from({length:lim},(_,i)=>`<i class="${i<lim-left?"used":""}"></i>`).join("")}</div><p class="dim">${left} listen${left===1?"":"s"} left</p>`:`<p class="dim">Listen as much as you want</p>`}
       ${opts()?`<input class="inp" id="guess" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(O.guessDraft)}" ${t.heard?"":"disabled"}>
         <button class="btn team" id="submit" ${t.heard?"":"disabled"}>FINAL ANSWER</button><button class="link" id="giveup" ${t.heard?"":"hidden"}>Give up</button>`
       :`<button class="btn team" id="reveal" ${t.heard?"":"disabled"}>REVEAL IT</button>`}${errHTML()}`,
       bind(){
-        $("pl").onclick=()=>{ ac(); send({type:"listen"}); };
+        // Start the clip on the tap itself instead of waiting for the server's go-ahead; the server still counts the listen.
+        $("pl").onclick=()=>{ ac(); if(playing || (lim && left<=0)) return; O.selfPlay=Date.now(); send({type:"listen"}); playGuesserClip(); };
         if(opts()){
           const g=$("guess"); g.oninput=()=>O.guessDraft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("submit").click(); };
           $("submit").onclick=()=>{ if(!O.guessDraft.trim()){ g.focus(); return; } SFX.drum(); send({type:"guess",text:O.guessDraft}); };
@@ -1239,8 +1293,21 @@ const ONLINE_VIEWS = {
 // Auto-open the join screen from an invite link
 { const rc=(new URLSearchParams(location.search).get("room")||"").toUpperCase();
   if(rc && ONLINE_OK){ S.screen="online"; if(/^[A-Z]{4}$/.test(rc) && O.name) connect(rc); } }
-render();
 loadWords();
+render();
+// After the first paint, when the phone is idle: warm up today's Daily so it opens instantly.
+addEventListener("load",()=>setTimeout(()=>idle(prefetchDaily),800));
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){
+    // In the background: stop any recording and turn the mic off. It comes back on the next record tap.
+    releaseMic();
+  } else {
+    if(wakeWanted && !["title","setup","daily","solo"].includes(S.screen)) keepAwake(true);
+    // Phones drop sockets in the background. Reconnect right away instead of waiting out the retry delay.
+    if(S.screen==="online" && O.code && !O.closed && (!O.ws || O.ws.readyState>1)){ clearTimeout(O.rt); O.retry=0; connect(O.code); }
+    if(S.screen==="title") prefetchDaily();
+  }
+});
 
 </script>
 <script>if("serviceWorker" in navigator) addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
