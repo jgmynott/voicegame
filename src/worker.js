@@ -18,6 +18,8 @@ export default {
     }
     const m = url.pathname.match(/^\/api\/room\/([A-Z]{4})(\/.*)?$/);
     if (m) return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(req);
+    const sm = url.pathname.match(/^\/api\/stats\/([A-Z0-9]{10})$/);
+    if (sm) return env.STATS.get(env.STATS.idFromName(sm[1])).fetch(req);
     if (url.pathname.startsWith("/api/daily")) return daily(req, env, url);
     if (url.pathname === "/api/say" && req.method === "GET") {
       const w = (url.searchParams.get("w") || "").trim().slice(0, 80);
@@ -405,5 +407,37 @@ export class Room extends DurableObject {
     s.turns[t.team]++;
     s.turnTeam = 1 - s.turnTeam; if (s.turnTeam === 0) s.round++;
     s.phase = "reveal";
+  }
+}
+
+// ---------- All-time stats backup ----------
+// One Durable Object per stats code. Each phone on that code stores its own copy of its counters
+// (key "d:<device id>"); the phones add them up themselves. Nothing here identifies a person.
+const MAX_STATS_BYTES = 24_000, MAX_STATS_DEVICES = 20;
+export class Stats extends DurableObject {
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === "GET") {
+      const all = await this.ctx.storage.list({ prefix: "d:" });
+      const devices = {};
+      for (const [k, v] of all) devices[k.slice(2)] = v;
+      return json({ devices });
+    }
+    if (req.method === "PUT") {
+      const dev = (url.searchParams.get("dev") || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 24);
+      if (!dev) return new Response("Missing device", { status: 400 });
+      const body = await req.text();
+      if (body.length > MAX_STATS_BYTES) return new Response("Too large", { status: 413 });
+      let data; try { data = JSON.parse(body); } catch (e) { return new Response("Bad JSON", { status: 400 }); }
+      if (!data || typeof data !== "object" || Array.isArray(data) || data.v !== 1) return new Response("Bad stats", { status: 400 });
+      const key = "d:" + dev;
+      if (!(await this.ctx.storage.get(key))) {
+        const n = (await this.ctx.storage.list({ prefix: "d:", limit: MAX_STATS_DEVICES })).size;
+        if (n >= MAX_STATS_DEVICES) return new Response("Too many phones on this code", { status: 409 });
+      }
+      await this.ctx.storage.put(key, data);
+      return json({ ok: true });
+    }
+    return new Response("Method not allowed", { status: 405 });
   }
 }
