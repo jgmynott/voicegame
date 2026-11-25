@@ -41,6 +41,26 @@ function dailyHints(t, misses) {
   ];
   return all.slice(0, Math.min(misses, all.length));
 }
+// Per-guess feedback: each guessed word marked g (right spot), y (in the answer, wrong spot),
+// n (almost a word in the answer), x (not in it), plus an overall closeness level.
+const toks = w => w.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
+function feedback(guess, answer) {
+  const gw = toks(guess), aw = toks(answer), left = [...aw];
+  const marks = gw.map((w, i) => (aw[i] === w || aw[aw.length - gw.length + i] === w ? "g" : null));
+  marks.forEach((m, i) => { if (m) left.splice(left.indexOf(gw[i]), 1); });
+  gw.forEach((w, i) => {
+    if (marks[i]) return;
+    const k = left.indexOf(w);
+    if (k >= 0) { marks[i] = "y"; left.splice(k, 1); return; }
+    marks[i] = aw.some(a => a.length >= 4 && lev(a, w) <= (a.length >= 7 ? 2 : 1)) ? "n" : "x";
+  });
+  const a = norm(answer), g = norm(guess);
+  const r1 = a && g ? 1 - lev(a, g) / Math.max(a.length, g.length) : 0;
+  const pts = { g: 2, y: 1.5, n: 1, x: 0 }, r2 = aw.length ? marks.reduce((t, m) => t + pts[m], 0) / (2 * Math.max(aw.length, gw.length)) : 0;
+  const r = Math.max(r1, r2);
+  const level = r >= 0.75 ? 3 : r >= 0.5 ? 2 : r >= 0.3 ? 1 : 0;
+  return { words: gw.map((w, i) => ({ w, s: marks[i] })), level, heat: ["Cold", "Warm", "Close", "Very close"][level] };
+}
 const json = (o, init = {}) => new Response(JSON.stringify(o), { ...init, headers: { "content-type": "application/json", "cache-control": "no-store", ...(init.headers || {}) } });
 async function dailyAudio(env, t, origin) {
   const key = new Request(`${origin}/api/daily/audio?d=${t.date}&v=1`);
@@ -90,7 +110,7 @@ async function daily(req, env, url) {
     const correct = judge(guess, t.word);
     const misses = correct ? prior : prior + 1;
     const over = correct || misses >= DAILY_GUESSES;
-    return json({ correct, misses, over, hints: dailyHints(t, misses), word: over ? t.word : undefined, syl: over ? t.syl : undefined });
+    return json({ correct, misses, over, fb: correct ? undefined : feedback(guess, t.word), hints: dailyHints(t, misses), word: over ? t.word : undefined, syl: over ? t.syl : undefined });
   }
   return new Response("Not found", { status: 404 });
 }

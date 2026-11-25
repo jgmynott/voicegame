@@ -181,6 +181,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .drow{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:var(--card);font-weight:600;text-align:left;width:100%;box-sizing:border-box}
 .drow.no span{color:var(--bad)} .drow.ok{background:#e8f7ee} .drow.ok span{color:var(--good)}
 .hint{padding:8px 14px;border-radius:12px;background:var(--paper);color:var(--ink);font-weight:500;width:100%;box-sizing:border-box;text-align:left;letter-spacing:.02em}
+.fbw{display:flex;flex-wrap:wrap;gap:6px;flex:1}
+.fbw i,.legend i{font-style:normal;padding:3px 9px;border-radius:8px;font-weight:600}
+.fb-g{background:var(--good);color:#fff} .fb-y{background:#f5b400;color:#1c1917} .fb-n{background:#ffd9bf;color:#1c1917} .fb-x{background:#e7e2dd;color:var(--dim)}
+.heat{font-style:normal;font-size:.8rem;font-weight:600;white-space:nowrap;padding:3px 8px;border-radius:999px;background:#fff}
+.heat.h3{color:var(--good)} .heat.h2{color:var(--a)} .heat.h1{color:#b45309} .heat.h0{color:var(--dim)}
+.legend{font-size:.75rem;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.legend i{font-size:.75rem;padding:2px 7px}
+.seg.speed{justify-content:center}
+.seg.speed button{background:var(--card)}
+.seg.speed button[aria-checked="true"]{background:var(--ink);color:#fff}
 .dstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%}
 .dstats div{display:flex;flex-direction:column;font-size:.8rem;color:var(--dim)}
 .dstats b{font-size:1.6rem;color:var(--ink)}
@@ -255,13 +265,59 @@ let actx = null, stream = null, playing = null, micBlocked = false;
 function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==="suspended") actx.resume(); return actx; }
 function decode(ab){ return new Promise((res,rej)=>ac().decodeAudioData(ab,res,rej)); }
 function stopPlay(){ if(playing){ const p=playing; playing=null; try{p.stop()}catch(e){} } }
-function play(buf,onEnd){
-  stopPlay(); const c=ac(); const s=c.createBufferSource(); s.buffer=buf; s.connect(c.destination);
+function play(buf,onEnd,rate){
+  stopPlay(); const c=ac(); const s=c.createBufferSource(); s.buffer=buf; if(rate) s.playbackRate.value=rate; s.connect(c.destination);
   s.onended=()=>{ if(playing===s){ playing=null; onEnd&&onEnd(); } }; s.start(); playing=s;
 }
 function reverseBuf(buf){
   const out=ac().createBuffer(buf.numberOfChannels,buf.length,buf.sampleRate);
   for(let ch=0;ch<buf.numberOfChannels;ch++){ const a=buf.getChannelData(ch), b=out.getChannelData(ch), n=a.length; for(let i=0;i<n;i++) b[i]=a[n-1-i]; }
+  return out;
+}
+// Clean a recording: band-pass to the voice range (cuts rumble, hum and hiss),
+// then a soft noise gate that quiets the gaps between words down to near silence.
+async function cleanBuf(buf){
+  try{
+    const sr=buf.sampleRate, n=buf.length;
+    const off=new OfflineAudioContext(1,n,sr), src=off.createBufferSource(); src.buffer=buf;
+    const hp=off.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=110; hp.Q.value=0.7;
+    const hp2=off.createBiquadFilter(); hp2.type="highpass"; hp2.frequency.value=110; hp2.Q.value=0.7;
+    const lp=off.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=7000; lp.Q.value=0.7;
+    src.connect(hp); hp.connect(hp2); hp2.connect(lp); lp.connect(off.destination); src.start();
+    const out=await off.startRendering(), d=out.getChannelData(0);
+    const fr=Math.max(64,Math.round(sr*0.02)), nf=Math.ceil(n/fr), rms=new Float32Array(nf);
+    for(let f=0;f<nf;f++){ let s=0; const a=f*fr, b=Math.min(n,a+fr); for(let i=a;i<b;i++) s+=d[i]*d[i]; rms[f]=Math.sqrt(s/Math.max(1,b-a)); }
+    const sorted=Array.from(rms).sort((x,y)=>x-y), floor=sorted[Math.floor(nf*0.15)]||0, peak=sorted[nf-1]||0;
+    if(peak>floor*4){
+      const open=Math.max(floor*3, peak*0.06), shut=open*0.6;
+      const g=new Float32Array(nf); let on=false, hold=0;
+      for(let f=0;f<nf;f++){ if(rms[f]>open){ on=true; hold=8; } else if(rms[f]<shut){ if(hold>0) hold--; else on=false; } g[f]=on?1:0.06; }
+      for(let f=1;f<nf;f++) g[f]=Math.max(g[f], g[f-1]*0.7);           // release
+      for(let f=nf-2;f>=0;f--) g[f]=Math.max(g[f], g[f+1]*0.6);        // attack, so word starts aren't clipped
+      let mx=0;
+      for(let i=0;i<n;i++){ const f=i/fr, k=Math.min(nf-1,Math.floor(f)), k2=Math.min(nf-1,k+1), t=f-k; d[i]*= g[k]*(1-t)+g[k2]*t; const v=Math.abs(d[i]); if(v>mx) mx=v; }
+      if(mx>0 && mx<0.7){ const s=0.7/mx; for(let i=0;i<n;i++) d[i]*=s; }
+    }
+    return out;
+  }catch(e){ return buf; }
+}
+// Slow speech down without dropping the pitch (WSOLA time-stretch). rate<1 is slower.
+function stretchBuf(buf,rate){
+  if(!rate || rate>=0.99) return buf;
+  const sr=buf.sampleRate, x=buf.getChannelData(0), N=Math.round(sr*0.046), H=N>>1, tol=Math.round(sr*0.012);
+  const outLen=Math.ceil(x.length/rate)+N, y=new Float32Array(outLen), wsum=new Float32Array(outLen);
+  const win=new Float32Array(N); for(let i=0;i<N;i++) win[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));
+  let prev=0, o=0;
+  for(;;o+=H){
+    const center=Math.round(o*rate); if(center+N+tol>=x.length) break;
+    let best=center;
+    if(o>0){ const nat=prev+H; let bestC=-Infinity;
+      for(let k=-tol;k<=tol;k+=2){ const p=center+k; if(p<0||p+N>=x.length) continue; let c=0; for(let i=0;i<N;i+=4) c+=x[p+i]*x[nat+i]; if(c>bestC){ bestC=c; best=p; } } }
+    for(let i=0;i<N;i++){ y[o+i]+=x[best+i]*win[i]; wsum[o+i]+=win[i]; }
+    prev=best;
+  }
+  const len=Math.min(outLen,o+N), out=ac().createBuffer(1,len,sr), z=out.getChannelData(0);
+  for(let i=0;i<len;i++) z[i]=wsum[i]>1e-3?y[i]/wsum[i]:0;
   return out;
 }
 function trimBuf(buf){
@@ -277,7 +333,11 @@ function trimBuf(buf){
 }
 async function getStream(){
   if(stream && stream.active) return stream;
-  stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  // Ask the phone for its voice processing: noise suppression, echo cancellation, auto gain, mono.
+  // voiceIsolation is used where the browser supports it (newer Chrome); others ignore it.
+  const want={echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,voiceIsolation:true};
+  try{ stream = await navigator.mediaDevices.getUserMedia({audio:want}); }
+  catch(e){ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
   return stream;
 }
 let activeRec=null;
@@ -438,7 +498,7 @@ async function recordInto(key,btn,onDone){
   mr.onstop=async()=>{
     clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
     SFX.recOff(); buzz(20);
-    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await decode(await blob.arrayBuffer())); S.turn[key]=buf; onDone(buf,blob); }
+    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await cleanBuf(await decode(await blob.arrayBuffer()))); S.turn[key]=buf; onDone(buf,blob); }
     catch(e){ S.micError="Could not read that recording. Try again."; render(); }
   };
   mr.start(); activeRec=mr; recStart=Date.now();
@@ -701,7 +761,7 @@ function finish(correct){
 
 
 // ---------- Daily BackWord: one word a day, same for everyone ----------
-const D = { info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
+const D = { speed:(()=>{ try{ const v=+localStorage.getItem("bw-speed2"); return [1,0.7,0.5].includes(v)?v:0.7; }catch(e){ return 0.7; } })(), info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
 const DKEY="bw-daily", DSTATS="bw-daily-stats";
 const dload = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) || d; }catch(e){ return d; } };
 const dsave = (k,v) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
@@ -736,7 +796,7 @@ async function dailyGuess(text){
     const r=await fetch("/api/daily/guess",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({n:D.info.n,guess:text,misses:st.misses})});
     if(r.status===409){ D.info=null; D.busy=false; openDaily(); return; }
     const j=await r.json();
-    st.guesses.push({ text:text.trim(), ok:j.correct }); st.hints=j.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
+    st.guesses.push({ text:text.trim(), ok:j.correct, fb:j.fb }); st.hints=j.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
     if(j.over){ st.over=true; st.won=j.correct; st.word=j.word;
       const s=dstats(); s.played++; if(j.correct){ s.wins++; s.streak = s.lastWin===D.info.n-1 ? s.streak+1 : 1; s.best=Math.max(s.best,s.streak); s.lastWin=D.info.n; } else s.streak=0; s.lastPlayed=D.info.n; dsave(DSTATS,s);
       if(j.correct){ SFX.win(); confetti(); buzz([40,60,40]); } else { SFX.lose(); buzz(200); }
@@ -756,7 +816,9 @@ VIEWS.daily = function(){
     bind(){ $("retry").onclick=()=>{ D.info=null; openDaily(); }; $("home").onclick=()=>go("title"); } };
   const st=dstate(), max=D.info.maxGuesses, left=max-st.guesses.length;
   if(!st.listens && D.listens) st.listens=D.listens;
-  const rows = st.guesses.map(g=>`<div class="drow ${g.ok?"ok":"no"}"><span>${g.ok?"✓":"✗"}</span>${esc(g.text)}</div>`).join("");
+  const rows = st.guesses.map(g=>`<div class="drow ${g.ok?"ok":"no"}">${g.ok?`<span>✓</span>${esc(g.text)}`:
+    `<div class="fbw">${(g.fb&&g.fb.words||[{w:g.text,s:"x"}]).map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div>${g.fb?`<em class="heat h${g.fb.level}">${esc(g.fb.heat)}</em>`:""}`}</div>`).join("");
+  const legend = st.guesses.some(g=>g.fb) && !st.over ? `<p class="dim legend"><i class="fb-g">right spot</i> <i class="fb-y">wrong spot</i> <i class="fb-n">almost</i> <i class="fb-x">not in it</i></p>` : "";
   const hints = st.hints.map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
   if(st.over){
     const s=dstats();
@@ -769,8 +831,8 @@ VIEWS.daily = function(){
       <p class="dim">Next word in ${untilNext()}</p>
       <button class="link" id="home">Back to menu</button>`,
       bind(){
-        $("fwd").onclick=()=>{ if(D.fwd) play(D.fwd); };
-        $("pl").onclick=()=>{ if(D.rev) play(D.rev); };
+        $("fwd").onclick=()=>{ const s=atSpeed("fwd"); if(s) play(s); };
+        $("pl").onclick=()=>{ const s=atSpeed("rev"); if(s) play(s); };
         $("share").onclick=async()=>{ const t=shareText(st);
           try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(t); D.copied=true; render(); setTimeout(()=>{ D.copied=false; if(S.screen==="daily") render(); },1600); }catch(e){} };
@@ -780,20 +842,29 @@ VIEWS.daily = function(){
   const L=D.local, mine=L.mine;
   return { cls:"center", html:`<span class="kicker">Daily BackWord #${D.info.n} · ${esc(D.info.cat)}</span>
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Today's word, played backward. Listen as much as you want.</p></div>
+    ${speedSeg()}
     <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${mine?"":"disabled"}>🔄 Flip mine</button></div>
     <p class="dim" style="margin:0">Copy the backward sound, then flip your copy to hear the real word.</p>
-    ${hints}${rows}
+    ${rows}${legend}${hints}
     <input class="inp" id="dg" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(D.draft)}">
     <button class="btn" id="go" ${D.busy?"disabled":""}>${D.busy?"CHECKING…":`GUESS · ${left} LEFT`}</button>
     ${D.err?`<p class="err">${esc(D.err)}</p>`:""}`,
     bind(){
-      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; D.listens++; buzz(15); p.classList.add("spin"); play(D.rev,()=>p.classList.remove("spin")); };
+      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; D.listens++; buzz(15); p.classList.add("spin"); play(atSpeed("rev"),()=>p.classList.remove("spin")); };
+      bindSpeed();
       const r=$("rec"); r.onclick=()=>recordInto("rec",r,buf=>{ L.mine=reverseBuf(buf); render(); });
       if(mine) $("flip").onclick=()=>{ if(activeRec) return; buzz(10); play(L.mine); };
       const g=$("dg"); g.oninput=()=>D.draft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("go").click(); };
       $("go").onclick=()=>{ if(!D.draft.trim()){ g.focus(); return; } D.err=""; dailyGuess(D.draft); };
     } };
 };
+
+const SPEEDS=[[1,"Normal"],[0.7,"Slow"],[0.5,"Slower"]];
+const SCACHE={};
+function atSpeed(which){ const base=which==="fwd"?D.fwd:D.rev; if(!base) return null; const k=which+D.speed+"|"+(D.info&&D.info.n);
+  if(!SCACHE[k]) SCACHE[k]=stretchBuf(base,D.speed); return SCACHE[k]; }
+function speedSeg(){ return `<div class="seg speed" id="speed" role="radiogroup" aria-label="Playback speed">${SPEEDS.map(([v,l])=>`<button type="button" role="radio" aria-checked="${v===D.speed}" data-v="${v}">${l}</button>`).join("")}</div>`; }
+function bindSpeed(){ const el=$("speed"); if(!el) return; el.querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed2",D.speed); }catch(e){} render(); const s=atSpeed("rev"); if(s) play(s); }); }
 
 // ================= Online mode: every player on their own phone =================
 const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, mimic:false, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
@@ -837,7 +908,7 @@ async function getClip(kind){
   if(O.clips[key]) return O.clips[key];
   const r = await fetch("/api/room/"+O.code+"/clip/"+kind,{cache:"no-store"});
   if(!r.ok) throw new Error("clip "+r.status);
-  const buf = trimBuf(await decode(await r.arrayBuffer()));
+  const buf = trimBuf(await cleanBuf(await decode(await r.arrayBuffer())));
   const v = {buf, rev:reverseBuf(buf)}; O.clips[key]=v; return v;
 }
 async function upload(kind, blob){
