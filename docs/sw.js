@@ -1,5 +1,5 @@
 // Network first so updates show up right away; cache is the offline fallback.
-const CACHE = "rvg-v4";
+const CACHE = "rvg-v5";
 self.addEventListener("install", e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "words.json"]))); });
 self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", e => {
