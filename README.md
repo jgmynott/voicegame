@@ -9,6 +9,7 @@ No build step. Hosted on Cloudflare Workers: static files from `docs/`, plus `sr
 - `docs/sw.js`, `manifest.webmanifest`, `icon-*.png`: home screen app support
 - `docs/fonts/`: Titan One (bubble letters for the logo, headings and buttons) and Fredoka (body text), served from this site (no Google Fonts request)
 - `docs/_headers`: browser cache rules for the static files (long cache for the font and icons)
+- All-time stats: every finished word in every mode is counted in localStorage (`bs-stats`). Each phone backs its copy up to the `Stats` Durable Object under a 10-character stats code (`/api/stats/CODE`); phones that share a code add their counts together on the stats screen.
 
 The service worker serves the page network first (falling back to the cached copy after 2.5 seconds
 or when offline) and everything else from cache, refreshed in the background. Bump `CACHE` in
