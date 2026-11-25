@@ -202,7 +202,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .fb-g{background:var(--good);color:#fff} .fb-y{background:#daa71b;color:#2a2622} .fb-n{background:#f8dac6;color:#2a2622} .fb-x{background:#e5ddd3;color:var(--dim)}
 .heat{font-style:normal;font-size:.8rem;font-weight:600;white-space:nowrap;padding:3px 8px;border-radius:999px;background:var(--surface)}
 .heat.h3{color:var(--good)} .heat.h2{color:var(--a)} .heat.h1{color:#a1561c} .heat.h0{color:var(--dim)}
-.legend{font-size:.75rem;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.legend{font-size:.75rem;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0}
+.legend span{width:100%;text-align:center}
+.howto{margin:0;font-weight:600;font-size:.95rem}
 .legend i{font-size:.75rem;padding:2px 7px}
 .seg.speed{justify-content:center}
 .seg.speed button{background:var(--card)}
@@ -547,7 +549,9 @@ function helpHTML(){
   if(S.screen==="daily") return `<ul><li>One word a day, the same for everyone. A new one comes at midnight New York time.</li>
       <li>Listen to it backward as often as you like. Slow it down if it helps.</li>
       <li>Tap Say it back to copy the backward sound, then Flip mine to hear your copy forward.</li>
-      <li>You get 5 guesses, and a new hint after each miss.</li></ul>`;
+      <li>You get 5 guesses. After each miss you get a hint: syllables, then the number of words, then first letters, then more letters.</li>
+      <li>Each wrong guess gets a tag for how close your spelling was: Not close, Getting warmer, Close or Very close.</li>
+      <li>For answers with more than one word, each word you typed is colored: green is a right word in the right place, yellow a right word in the wrong place, peach nearly a right word.</li></ul>`;
   if(S.screen==="solo") return `<ul><li>A random word from the list, played backward.</li>
       <li>Say it back and flip your copy to hear it forward.</li><li>Guess as many times as you like. Hints and Reveal are there if you're stuck.</li></ul>`;
   return `<ul>
@@ -888,6 +892,19 @@ function shareText(st){
   return `BackSlang Daily #${D.info.n} ${st.won?st.guesses.length:"X"}/${D.info.maxGuesses}\n${sq}  🔁${st.listens||D.listens}\n${location.origin}`;
 }
 
+// Guess feedback shared by Daily and Free play. The tag is overall closeness (spelling), the chip colors
+// are per word. The color key only lists colors that actually appear, and only when one isn't plain gray.
+const HEAT=["Not close","Getting warmer","Close","Very close"];
+const FBL={g:"right word, right place",y:"right word, wrong place",n:"nearly a word in it",x:"not in it"};
+const fbRow = g => `<div class="fbw">${(g.fb&&g.fb.words||[{w:g.text,s:"x"}]).map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div>${g.fb?`<em class="heat h${g.fb.level}">${HEAT[g.fb.level]}</em>`:""}`;
+function fbKey(list){
+  const fb=list.filter(g=>g.fb); if(!fb.length) return "";
+  const seen=new Set(fb.flatMap(g=>g.fb.words.map(x=>x.s)));
+  const colors=["g","y","n"].some(k=>seen.has(k)) ? ["g","y","n","x"].filter(k=>seen.has(k)).map(k=>`<i class="fb-${k}">${FBL[k]}</i>`).join(" ") : "";
+  return `<p class="dim legend"><span>The tag shows how close your spelling was.</span>${colors}</p>`;
+}
+const hintHTML = h => `<div class="hint">💡 <b>Hint:</b> ${esc(h)}</div>`;
+
 VIEWS.daily = function(){
   if(D.loading || (!D.info && !D.err)) return { cls:"center", key:"load", html:`<span class="kicker">Daily BackSlang</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
   if(D.err && !D.rev) return { cls:"center", key:"err", html:`<span class="kicker">Daily BackSlang</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
@@ -895,9 +912,9 @@ VIEWS.daily = function(){
   const st=dstate(), max=D.info.maxGuesses, left=max-st.guesses.length;
   if(!st.listens && D.listens) st.listens=D.listens;
   const rows = st.guesses.map(g=>`<div class="drow ${g.ok?"ok":"no"}">${g.ok?`<span>✓</span>${esc(g.text)}`:
-    `<div class="fbw">${(g.fb&&g.fb.words||[{w:g.text,s:"x"}]).map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div>${g.fb?`<em class="heat h${g.fb.level}">${esc(g.fb.heat)}</em>`:""}`}</div>`).join("");
-  const legend = st.guesses.some(g=>g.fb) && !st.over ? `<p class="dim legend"><i class="fb-g">right spot</i> <i class="fb-y">wrong spot</i> <i class="fb-n">almost</i> <i class="fb-x">not in it</i></p>` : "";
-  const hints = st.hints.map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
+    fbRow(g)}</div>`).join("");
+  const legend = st.over ? "" : fbKey(st.guesses);
+  const hints = st.hints.map(hintHTML).join("");
   if(st.over){
     const s=dstats();
     return { cls:"center", key:"over", html:`<span class="kicker">Daily BackSlang #${D.info.n}</span>
@@ -919,10 +936,11 @@ VIEWS.daily = function(){
   }
   const L=D.local, mine=L.mine;
   return { cls:"center", html:`<span class="kicker">Daily BackSlang #${D.info.n} · ${esc(D.info.cat)}</span>
+    ${st.guesses.length?"":`<p class="howto">Guess today's word in ${max} tries. Each miss shows how close you were and gives you a hint.</p>`}
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Today's word, played backward. Listen as much as you want.</p></div>
     ${speedSeg()}
     <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${mine?"":"disabled"}>🔄 Flip mine</button></div>
-    <p class="dim" style="margin:0">Copy the backward sound, then flip your copy to hear the real word.</p>
+    <p class="dim" style="margin:0">Stuck? Copy the backward sound, then flip your copy to hear the real word.</p>
     ${rows}${legend}${hints}
     <input class="inp" id="dg" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(D.draft)}">
     <button class="btn" id="go" ${D.busy?"disabled":""}>${D.busy?"CHECKING…":`GUESS · ${left} LEFT`}</button>
@@ -996,14 +1014,14 @@ function soloFeedback(guess, answer){
   const a=norm(answer), g=norm(guess), r1=a&&g?1-lev(a,g)/Math.max(a.length,g.length):0;
   const pts={g:2,y:1.5,n:1,x:0}, r2=aw.length?marks.reduce((t,m)=>t+pts[m],0)/(2*Math.max(aw.length,gw.length)):0, r=Math.max(r1,r2);
   const level=r>=0.75?3:r>=0.5?2:r>=0.3?1:0;
-  return { words:gw.map((w,i)=>({w,s:marks[i]})), level, heat:["Cold","Warm","Close","Very close"][level] };
+  return { words:gw.map((w,i)=>({w,s:marks[i]})), level, heat:HEAT[level] };
 }
 function soloHints(){
   const w=P.cur.word, words=w.split(" ");
-  return [ `${P.cur.syl} syllable${P.cur.syl>1?"s":""}`,
+  return [ `${P.cur.syl} syllable${P.cur.syl>1?"s":""} long`,
     `${words.length} word${words.length>1?"s":""}: ${words.map(x=>x.replace(/[a-z0-9]/gi,"_")).join("  ")}`,
-    `Starts with: ${words.map(x=>x[0].toUpperCase()).join(" ")}`,
-    `Looks like: ${words.map(x=>x.length>1?x[0].toUpperCase()+x.slice(1,-1).replace(/[a-z0-9]/gi,"_")+x.slice(-1):x.toUpperCase()).join(" ")}` ].slice(0,P.hints);
+    `Starts with ${words.map(x=>x[0].toUpperCase()).join(" ")}`,
+    `Looks like ${words.map(x=>x.length>1?x[0].toUpperCase()+x.slice(1,-1).replace(/[a-z0-9]/gi,"_")+x.slice(-1):x.toUpperCase()).join(" ")}` ].slice(0,P.hints);
 }
 function soloGuess(){
   const t=P.draft.trim(); if(!t || P.done || P.loading || !P.cur) return;
@@ -1021,7 +1039,7 @@ VIEWS.solo = function(){
   if(P.loading || !P.cur) return { cls:"center", key:"load", html:`<span class="kicker">Free play</span>${P.err?`<p class="err">${esc(P.err)}</p><button class="btn" id="nx">NEXT WORD</button>`:`<h2 class="big-t">Getting a word…</h2><div class="dots"><i></i><i></i><i></i></div>`}`,
     bind(){ if($("nx")) $("nx").onclick=()=>soloNext(); } };
   const c=P.cur;
-  const rows=P.guesses.filter(g=>!g.ok).map(g=>`<div class="drow no"><div class="fbw">${g.fb.words.map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div><em class="heat h${g.fb.level}">${esc(g.fb.heat)}</em></div>`).join("");
+  const misses=P.guesses.filter(g=>!g.ok), rows=misses.map(g=>`<div class="drow no">${fbRow(g)}</div>`).join("");
   if(P.done) return { cls:"center", key:"done|"+c.word, html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
       <h2 class="big-t">${P.won?(P.guesses.length===1?"First try!":"Got it!"):"It was"}</h2>
       <div class="word sm">${esc(c.word)}</div>
@@ -1030,8 +1048,8 @@ VIEWS.solo = function(){
       <button class="btn" id="nx">NEXT WORD</button>
       <button class="link" id="home">Back to menu</button>`,
     bind(){ $("fwd").onclick=()=>play(soloSpeed(c.fwd)); $("pl").onclick=()=>play(soloSpeed(c.rev)); $("nx").onclick=()=>{ if(P.loading) return; SFX.whoosh(); soloNext(); }; $("home").onclick=()=>go("title"); } };
-  const hints=soloHints().map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
-  const legend=rows?`<p class="dim legend"><i class="fb-g">right spot</i> <i class="fb-y">wrong spot</i> <i class="fb-n">almost</i> <i class="fb-x">not in it</i></p>`:"";
+  const hints=soloHints().map(hintHTML).join("");
+  const legend=fbKey(misses);
   return { cls:"center", key:"play|"+c.word, html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
     ${catSeg}
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">A random word, played backward. Listen as much as you want.</p></div>
