@@ -4,11 +4,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ReVerse">
+<meta name="apple-mobile-web-app-title" content="BackSlang">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<title>ReVerse</title>
+<title>BackSlang</title>
 <!-- Fonts (SIL Open Font License) are served from this site, so the first paint does not wait on another domain.
      Titan One: chunky bubble letters for the logo, headings and buttons. Fredoka: body text. -->
 <link rel="preload" href="fonts/titan-one-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -162,7 +162,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 
 /* title, setup */
 .title{text-align:center;padding:10px 0 4px}
-.title .huge{font-size:clamp(3rem,15vw,4.4rem);font-weight:700}
+.title .huge{font-size:clamp(2.2rem,14vw,4.4rem);font-weight:700}
 .title .mirror{display:block;transform:scaleX(-1);color:var(--a)}
 /* Bubble letters: a dark outline drawn behind the fill, and a solid brownish-green offset shadow. */
 .title .huge,.code{-webkit-text-stroke:.09em var(--ink);paint-order:stroke fill;text-shadow:.05em .08em 0 var(--shadow)}
@@ -534,7 +534,7 @@ function topbar(){
 let quitArmed=false;
 // "Free" screens can be left at any time. Leaving an active game asks first (menu, tap twice to quit).
 const freeScreen = () => ["title","setup","daily","solo"].includes(S.screen) || (S.screen==="online" && !O.code);
-const logoHTML = () => `<button class="logo" id="homeBtn" aria-label="${S.screen==="title"?"ReVerse":"Back to the home screen"}">${S.screen==="title"?"":`<span class="bk" aria-hidden="true">‹</span>`}<span>Re</span><span class="w">Verse</span></button>`;
+const logoHTML = () => `<button class="logo" id="homeBtn" aria-label="${S.screen==="title"?"BackSlang":"Back to the home screen"}">${S.screen==="title"?"":`<span class="bk" aria-hidden="true">‹</span>`}<span>Back</span><span class="w">Slang</span></button>`;
 function helpHTML(){
   if(S.screen==="daily") return `<ul><li>One word a day, the same for everyone. A new one comes at midnight New York time.</li>
       <li>Listen to it backward as often as you like. Slow it down if it helps.</li>
@@ -629,9 +629,9 @@ function afterBet(){
 
 const VIEWS = {
   title(){
-    return { cls:"center", html:`<div class="title"><h1 class="huge">ReVerse</h1><h1 class="huge mirror" aria-hidden="true">ReVerse</h1></div>
+    return { cls:"center", html:`<div class="title"><h1 class="huge">BackSlang</h1><h1 class="huge mirror" aria-hidden="true">BackSlang</h1></div>
       <span class="chip" id="wcount" style="${WORD_COUNT?"":"visibility:hidden"}">${WORD_COUNT?WORD_COUNT.toLocaleString():"0,000"} words and phrases</span><p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
-      ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY REVERSE</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
+      ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKSLANG</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
         if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); openDaily(); };
         if($("solo")) $("solo").onclick=()=>{ ac(); SFX.go(); openSolo(); };
@@ -815,7 +815,7 @@ function finish(correct){
 }
 
 
-// ---------- Daily ReVerse: one word a day, same for everyone ----------
+// ---------- Daily BackSlang: one word a day, same for everyone ----------
 const D = { speed:(()=>{ try{ const v=+localStorage.getItem("bw-speed2"); return [1,0.7,0.5].includes(v)?v:0.7; }catch(e){ return 0.7; } })(), info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
 const DKEY="bw-daily", DSTATS="bw-daily-stats";
 const dload = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) || d; }catch(e){ return d; } };
@@ -877,12 +877,12 @@ async function dailyGuess(text){
 }
 function shareText(st){
   const sq = st.guesses.map(g=>g.ok?"🟩":"🟥").join("");
-  return `ReVerse Daily #${D.info.n} ${st.won?st.guesses.length:"X"}/${D.info.maxGuesses}\n${sq}  🔁${st.listens||D.listens}\n${location.origin}`;
+  return `BackSlang Daily #${D.info.n} ${st.won?st.guesses.length:"X"}/${D.info.maxGuesses}\n${sq}  🔁${st.listens||D.listens}\n${location.origin}`;
 }
 
 VIEWS.daily = function(){
-  if(D.loading || (!D.info && !D.err)) return { cls:"center", key:"load", html:`<span class="kicker">Daily ReVerse</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
-  if(D.err && !D.rev) return { cls:"center", key:"err", html:`<span class="kicker">Daily ReVerse</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
+  if(D.loading || (!D.info && !D.err)) return { cls:"center", key:"load", html:`<span class="kicker">Daily BackSlang</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
+  if(D.err && !D.rev) return { cls:"center", key:"err", html:`<span class="kicker">Daily BackSlang</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
     bind(){ $("retry").onclick=()=>{ D.info=null; openDaily(); }; $("home").onclick=()=>go("title"); } };
   const st=dstate(), max=D.info.maxGuesses, left=max-st.guesses.length;
   if(!st.listens && D.listens) st.listens=D.listens;
@@ -892,7 +892,7 @@ VIEWS.daily = function(){
   const hints = st.hints.map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
   if(st.over){
     const s=dstats();
-    return { cls:"center", key:"over", html:`<span class="kicker">Daily ReVerse #${D.info.n}</span>
+    return { cls:"center", key:"over", html:`<span class="kicker">Daily BackSlang #${D.info.n}</span>
       <h2 class="big-t">${st.won?(st.guesses.length===1?"First try!":"Got it!"):"Not today"}</h2>
       <div class="word sm">${esc(st.word)}</div>
       <div class="lrow"><button class="play sm" id="fwd" aria-label="Play forward">${ICON.play}</button><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button></div>
@@ -910,7 +910,7 @@ VIEWS.daily = function(){
       } };
   }
   const L=D.local, mine=L.mine;
-  return { cls:"center", html:`<span class="kicker">Daily ReVerse #${D.info.n} · ${esc(D.info.cat)}</span>
+  return { cls:"center", html:`<span class="kicker">Daily BackSlang #${D.info.n} · ${esc(D.info.cat)}</span>
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Today's word, played backward. Listen as much as you want.</p></div>
     ${speedSeg()}
     <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${mine?"":"disabled"}>🔄 Flip mine</button></div>
@@ -1195,7 +1195,7 @@ const ONLINE_VIEWS = {
       :`<div class="card center"><p class="dim">${esc(oname(s.hostId))} is setting up: ${st.mode==="points"?"Points":"Casual"} · ${esc(st.category)} · ${st.source==="opponent"?"other team picks":"random words"}</p></div>${waitCard("Waiting for the host","")}`}`,
       bind(){
         document.querySelectorAll("[data-team]").forEach(b=>b.onclick=()=>{ SFX.tap(); send({type:"team",team:+b.dataset.team}); });
-        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"ReVerse",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
+        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"BackSlang",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(link); $("share").textContent="Link copied"; }catch(e){ $("share").textContent=link; } };
         if(host){
           const set=x=>send({type:"settings",settings:Object.assign({},st,x)});

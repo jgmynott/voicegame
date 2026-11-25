@@ -1,4 +1,4 @@
-# ReVerse
+# BackSlang
 
 A 2v2 party game, played on everyone's own phone or by passing one phone around. The Speaker says a word, hears it backward, then says the backward version from memory. That copy is flipped and played to the Guesser, who has to guess the original word.
 
@@ -14,7 +14,7 @@ The service worker serves the page network first (falling back to the cached cop
 or when offline) and everything else from cache, refreshed in the background. Bump `CACHE` in
 `docs/sw.js` when its precache list changes.
 
-## Daily ReVerse
+## Daily BackSlang
 
 One word a day (midnight New York time), the same for everyone. The Worker picks it from
 `src/daily-words.js` (built by `tools/daily.py`, not served publicly), voices it with
