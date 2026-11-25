@@ -39,58 +39,58 @@ def syl(phrase):
     return total
 
 random.seed(7)
-out = {c: {} for c in ["Places", "Animals", "Food", "Things", "People", "Sayings"]}
-dropped = []
+# Recognizable things only: real names, places, titles, brands and plain nouns.
+# No adjective + noun combos, and no syllable limit (every entry is kept, filed by syllable count).
+from lists2 import PEOPLE as FAMOUS, CHARACTERS, MOVIES_TV, BRANDS, PLACES_EXTRA, SPORTS
+CATS_ORDER = ["Places", "People", "Characters", "Movies & TV", "Brands", "Sports", "Animals", "Food", "Things", "Sayings"]
+out = {c: {} for c in CATS_ORDER}
+dropped = []; seen = set()
+VOW = re.compile(r"[aeiouy]+")
+def guess_syl(w):
+    w = re.sub(r"[^a-z]", "", w.lower())
+    if not w: return 0
+    if w.isdigit(): return 1
+    n = len(VOW.findall(w))
+    if w.endswith("e") and not w.endswith(("le", "ee", "ie", "ye")) and n > 1: n -= 1
+    return max(1, n)
+def syl_any(phrase):
+    total = 0
+    for w in re.split(r"[\s\-]+", phrase):
+        if not re.search(r"[A-Za-z0-9]", w): continue
+        n = wsyl(w)
+        total += n if n is not None else guess_syl(w)
+    return total
 def add(cat, phrase, cap=None):
-    n = syl(phrase)
-    if n is None: dropped.append(phrase); return False
-    if not 3 <= n <= 8: return False
-    b = out[cat].setdefault(n, [])
-    if phrase in b or (cap and len(b) >= cap): return False
-    b.append(phrase); return True
+    phrase = phrase.strip()
+    k = phrase.lower()
+    if not phrase or k in seen: return False
+    n = syl_any(phrase)
+    if n < 1: dropped.append(phrase); return False
+    seen.add(k); out[cat].setdefault(n, []).append(phrase); return True
 
-# Sayings and landmarks are curated
 for p in SAYINGS.split("|"): add("Sayings", p)
+for p in FAMOUS.split("|"): add("People", p)
+for p in CHARACTERS.split("|"): add("Characters", p)
+for p in MOVIES_TV.split("|"): add("Movies & TV", p)
+for p in BRANDS.split("|"): add("Brands", p)
+for p in SPORTS.split("|"): add("Sports", p)
+for p in PLACES_EXTRA.split("|"): add("Places", p)
 for p in LANDMARKS.split("|"): add("Places", p)
+for n_ in items(ANIMALS): add("Animals", n_)
+for n_ in items(FOODS): add("Food", n_)
+for n_ in items(THINGS): add("Things", n_)
 
-# Places from geonames: countries, US states, big cities, US cities + state
 g = geonamescache.GeonamesCache()
 ascii_ok = lambda s: re.fullmatch(r"[A-Za-z .'\-]+", s) is not None
 for c in g.get_countries().values():
-    if ascii_ok(c["name"]): add("Places", c["name"])
-states = {k: v["name"] for k, v in g.get_us_states().items()}
-for s in states.values(): add("Places", s)
-cities = sorted(g.get_cities().values(), key=lambda c: -c["population"])
-countries = {k: v["name"] for k, v in g.get_countries().items()}
-for c in cities:
+    if ascii_ok(c["name"]) and int(c.get("population") or 0) >= 4000000 and c["name"] not in ("Serbia and Montenegro",): add("Places", c["name"])
+for s_ in g.get_us_states().values(): add("Places", s_["name"])
+for c in sorted(g.get_cities().values(), key=lambda c: -c["population"]):
     if not ascii_ok(c["name"]): continue
-    if c["countrycode"] == "US" and c["population"] >= 60000:
-        add("Places", c["name"]); st = states.get(c.get("admin1code"))
-        if st: add("Places", f'{c["name"]} {st}')
-    elif c["population"] >= 400000:
+    if c["countrycode"] == "US" and c["population"] >= 350000:
         add("Places", c["name"])
-        cn = countries.get(c["countrycode"])
-        if cn and ascii_ok(cn) and c["population"] >= 1000000: add("Places", f'{c["name"]} {cn}')
 
-# Combos for animals, food, things: adjective + noun, filling every syllable level evenly
-def fill(cat, nouns, adjs, per_level):
-    nouns = items(nouns); adjs = items(adjs)
-    for n_ in nouns: add(cat, n_)
-    combos = [f"{a} {n_}" for a in adjs for n_ in nouns]
-    random.shuffle(combos)
-    for p in combos: add(cat, p, cap=per_level)
-fill("Animals", ANIMALS, ANIMAL_ADJ, 600)
-fill("Food", FOODS, FOOD_ADJ, 600)
-fill("Things", THINGS, THING_ADJ, 600)
-fill("People", PEOPLE, PEOPLE_ADJ, 600)
-
-total = 0
-for cat, b in out.items():
-    counts = {k: len(v) for k, v in sorted(b.items())}; s = sum(counts.values()); total += s
-    print(cat, s, counts)
-print("TOTAL", total, "dropped(unknown/ambiguous words):", len(dropped))
-for b in out.values():
-    for k in b: b[k] = [re.sub(r"\bi\b", "I", p) for p in b[k]]
+out = {c: v for c, v in out.items() if v}
 json.dump({c: {str(k): v for k, v in sorted(b.items())} for c, b in out.items()},
           open(sys.argv[1], "w"), separators=(",", ":"))
 open(os.path.join(os.path.dirname(__file__), "dropped.txt"), "w").write("\n".join(dropped))
