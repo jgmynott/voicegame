@@ -4,7 +4,7 @@
 // - Word list, icons, manifest: served from cache at once, refreshed in the background.
 // - The font never changes: cache first.
 // Bump CACHE when the precache list changes. Old caches are deleted on activate.
-const CACHE = "bw-v15";
+const CACHE = "bw-v16";
 const PRECACHE = ["./", "manifest.webmanifest", "icon-192.png", "icon-512.png", "words.json", "clear.json", "fonts/fredoka-latin.woff2", "fonts/titan-one-latin.woff2"];
 
 self.addEventListener("install", e => {

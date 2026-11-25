@@ -152,6 +152,8 @@ async function daily(req, env, url) {
     if (Number(body.n) !== t.n) return json({ stale: true, n: t.n }, { status: 409 });
     const guess = String(body.guess || "").slice(0, 120);
     const prior = Math.max(0, Math.min(DAILY_GUESSES, Number(body.misses) || 0));
+    // Give up: end today's puzzle as a loss and show the word, without using up the remaining guesses.
+    if (body.giveup === true) return json({ correct: false, misses: prior, over: true, gaveUp: true, hints: dailyHints(t, prior), word: t.word, syl: t.syl });
     const correct = judge(guess, t.word);
     const misses = correct ? prior : prior + 1;
     const over = correct || misses >= DAILY_GUESSES;
@@ -179,7 +181,7 @@ const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f]/g, "").trim()
 function freshState(code) {
   return {
     code, hostId: null, players: {}, order: [],
-    settings: { mode: "points", source: "opponent", category: "Places", guesserPlays: 2, speakerPlays: 2, rounds: 4 },
+    settings: { mode: "points", source: "opponent", category: "Places", guesserPlays: 2, speakerPlays: 2, rounds: 4, timer: 0 },
     teamNames: ["Red", "Blue"], scores: [0, 0], turns: [0, 0],
     phase: "lobby", round: 1, turnTeam: 0, turn: null, history: [], used: [], clipVer: 0
   };
@@ -315,6 +317,7 @@ export class Room extends DurableObject {
           if (typeof x.category === "string") st.category = clean(x.category, 20);
           if ([0, 1, 2, 3].includes(x.guesserPlays)) st.guesserPlays = x.guesserPlays;
           if ([2, 4, 6, 8].includes(x.rounds)) st.rounds = x.rounds;
+          if ([0, 30, 60].includes(x.timer)) st.timer = x.timer;
           break;
         }
         case "kick": if (isHost && s.phase === "lobby" && m.pid !== pid) { delete s.players[m.pid]; s.order = s.order.filter(i => i !== m.pid); } break;
