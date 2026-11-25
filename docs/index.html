@@ -524,6 +524,7 @@ const app=document.getElementById("app");
 const $=id=>document.getElementById(id);
 function topbar(){
   if(S.screen==="online") return onlineTopbar();
+  if(S.screen==="solo") return `<div class="bar"><div class="logo"><span></span><span>Back</span><span class="w">Words</span></div><div class="chip">Free play</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
   if(S.screen==="daily") return `<div class="bar"><div class="logo"><span></span><span>Back</span><span class="w">Words</span></div><div class="chip">Daily${D.info?" #"+D.info.n:""}</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
   const inGame = !["title","setup"].includes(S.screen);
   const sc = inGame && pts() ? `<div class="scores"><span class="s sa ${S.turnTeam===0&&S.screen!=="final"?"on":""}" id="sc0">${S.teams[0].score}</span><span class="dim">:</span><span class="s sb ${S.turnTeam===1&&S.screen!=="final"?"on":""}" id="sc1">${S.teams[1].score}</span></div>`
@@ -550,7 +551,7 @@ function menuHTML(){
 let KEEP_AUDIO=false;
 function render(){
   if(!KEEP_AUDIO) stopPlay();
-  document.body.dataset.team = S.screen==="online" ? String(onlineTeamColor()) : ["title","setup","daily"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
+  document.body.dataset.team = S.screen==="online" ? String(onlineTeamColor()) : ["title","setup","daily","solo"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
   const v=VIEWS[S.screen]();
   app.innerHTML = topbar() + `<section class="stage ${v.cls||""}">${v.html}</section>` + (S.menu?menuHTML():"");
   $("menuBtn").onclick=()=>{ SFX.tap(); S.menu=true; quitArmed=false; render(); };
@@ -581,9 +582,10 @@ const VIEWS = {
   title(){
     return { cls:"center", html:`<div class="title"><h1 class="huge">BackWords</h1><h1 class="huge mirror" aria-hidden="true">BackWords</h1></div>
       ${WORD_COUNT?`<span class="chip">${WORD_COUNT.toLocaleString()} words and phrases</span>`:""}<p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
-      ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKWORD</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
+      ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKWORD</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
         if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); openDaily(); };
+        if($("solo")) $("solo").onclick=()=>{ ac(); SFX.go(); openSolo(); };
         if($("playOnline")) $("playOnline").onclick=()=>{ ac(); SFX.go(); O.err=""; go("online"); }; } };
   },
   setup(){
@@ -865,6 +867,102 @@ function atSpeed(which){ const base=which==="fwd"?D.fwd:D.rev; if(!base) return 
   if(!SCACHE[k]) SCACHE[k]=stretchBuf(base,D.speed); return SCACHE[k]; }
 function speedSeg(){ return `<div class="seg speed" id="speed" role="radiogroup" aria-label="Playback speed">${SPEEDS.map(([v,l])=>`<button type="button" role="radio" aria-checked="${v===D.speed}" data-v="${v}">${l}</button>`).join("")}</div>`; }
 function bindSpeed(){ const el=$("speed"); if(!el) return; el.querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed2",D.speed); }catch(e){} render(); const s=atSpeed("rev"); if(s) play(s); }); }
+
+// ---------- Free play: one player, endless words, AI voice ----------
+const P = { cat:(()=>{ try{ return localStorage.getItem("bw-solo-cat")||"Mixed"; }catch(e){ return "Mixed"; } })(),
+  cur:null, next:null, guesses:[], hints:0, done:false, won:false, draft:"", err:"", loading:false, local:{}, solved:0, played:0, run:0 };
+const SOLO_CACHE = new WeakMap();
+function soloSpeed(buf){ if(!buf) return null; let m=SOLO_CACHE.get(buf); if(!m){ m={}; SOLO_CACHE.set(buf,m); } if(!m[D.speed]) m[D.speed]=stretchBuf(buf,D.speed); return m[D.speed]; }
+
+function soloPick(){
+  const cat = P.cat==="Mixed" ? CATS[Math.floor(Math.random()*CATS.length)] : P.cat;
+  const d = drawWord(cat,null);
+  return { word:d.word, syl:d.syl, cat };
+}
+async function soloLoad(item){
+  const r=await fetch("/api/say?w="+encodeURIComponent(item.word)); if(!r.ok) throw new Error("The voice didn't load. Tap Next word to try another.");
+  const buf=trimBuf(await decode(await r.arrayBuffer()));
+  item.fwd=buf; item.rev=reverseBuf(buf); return item;
+}
+function soloPrefetch(){ const n=soloPick(); P.next=n; soloLoad(n).catch(()=>{ if(P.next===n) P.next=null; }); }
+async function soloNext(){
+  P.guesses=[]; P.hints=0; P.done=false; P.won=false; P.draft=""; P.err=""; P.local={}; S.turn=P.local;
+  let item = P.next && P.next.rev ? P.next : null; P.next=null;
+  if(!item){ P.loading=true; render(); try{ item=await soloLoad(soloPick()); }catch(e){ P.err=e.message; } P.loading=false; }
+  P.cur=item; render(); soloPrefetch();
+  if(item && item.rev) setTimeout(()=>{ if(S.screen==="solo" && P.cur===item) play(soloSpeed(item.rev)); },350);
+}
+function openSolo(){ go("solo","whoosh"); if(!P.cur || P.done) soloNext(); }
+
+function soloFeedback(guess, answer){
+  const toks=w=>w.toLowerCase().replace(/[’']/g,"").replace(/[^a-z0-9 ]+/g," ").split(/\s+/).filter(Boolean);
+  const gw=toks(guess), aw=toks(answer), left=[...aw];
+  const marks=gw.map((w,i)=>(aw[i]===w || aw[aw.length-gw.length+i]===w ? "g" : null));
+  marks.forEach((m,i)=>{ if(m) left.splice(left.indexOf(gw[i]),1); });
+  gw.forEach((w,i)=>{ if(marks[i]) return; const k=left.indexOf(w); if(k>=0){ marks[i]="y"; left.splice(k,1); return; }
+    marks[i]=aw.some(a=>a.length>=4 && lev(a,w)<=(a.length>=7?2:1)) ? "n" : "x"; });
+  const a=norm(answer), g=norm(guess), r1=a&&g?1-lev(a,g)/Math.max(a.length,g.length):0;
+  const pts={g:2,y:1.5,n:1,x:0}, r2=aw.length?marks.reduce((t,m)=>t+pts[m],0)/(2*Math.max(aw.length,gw.length)):0, r=Math.max(r1,r2);
+  const level=r>=0.75?3:r>=0.5?2:r>=0.3?1:0;
+  return { words:gw.map((w,i)=>({w,s:marks[i]})), level, heat:["Cold","Warm","Close","Very close"][level] };
+}
+function soloHints(){
+  const w=P.cur.word, words=w.split(" ");
+  return [ `${P.cur.syl} syllable${P.cur.syl>1?"s":""}`,
+    `${words.length} word${words.length>1?"s":""}: ${words.map(x=>x.replace(/[a-z0-9]/gi,"_")).join("  ")}`,
+    `Starts with: ${words.map(x=>x[0].toUpperCase()).join(" ")}`,
+    `Looks like: ${words.map(x=>x.length>1?x[0].toUpperCase()+x.slice(1,-1).replace(/[a-z0-9]/gi,"_")+x.slice(-1):x.toUpperCase()).join(" ")}` ].slice(0,P.hints);
+}
+function soloGuess(){
+  const t=P.draft.trim(); if(!t || P.done) return;
+  const ok=judge(t,P.cur.word);
+  P.guesses.push({ text:t, ok, fb: ok?null:soloFeedback(t,P.cur.word) }); P.draft="";
+  if(ok){ P.done=true; P.won=true; P.solved++; P.played++; P.run++; SFX.win(); confetti(); buzz([40,60,40]); }
+  else { SFX.lose(); buzz(80); }
+  render();
+}
+function soloGiveUp(){ if(P.done) return; P.done=true; P.won=false; P.played++; P.run=0; SFX.lose(); render(); }
+
+VIEWS.solo = function(){
+  const catSeg = `<div class="seg speed" id="scat">${[...CATS,"Mixed"].map(c=>`<button type="button" role="radio" aria-checked="${c===P.cat}" data-v="${esc(c)}">${esc(c)}</button>`).join("")}</div>`;
+  const tally = `<p class="dim" style="margin:0">Solved ${P.solved} of ${P.played}${P.run>1?` · ${P.run} in a row`:""}</p>`;
+  if(P.loading || !P.cur) return { cls:"center", html:`<span class="kicker">Free play</span>${P.err?`<p class="err">${esc(P.err)}</p><button class="btn" id="nx">NEXT WORD</button>`:`<h2 class="big-t">Getting a word…</h2><div class="dots"><i></i><i></i><i></i></div>`}`,
+    bind(){ if($("nx")) $("nx").onclick=()=>soloNext(); } };
+  const c=P.cur;
+  const rows=P.guesses.filter(g=>!g.ok).map(g=>`<div class="drow no"><div class="fbw">${g.fb.words.map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div><em class="heat h${g.fb.level}">${esc(g.fb.heat)}</em></div>`).join("");
+  if(P.done) return { cls:"center", html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
+      <h2 class="big-t">${P.won?(P.guesses.length===1?"First try!":"Got it!"):"It was"}</h2>
+      <div class="word sm">${esc(c.word)}</div>
+      <div class="lrow"><button class="play sm" id="fwd" aria-label="Play forward">${ICON.play}</button><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button></div>
+      ${tally}
+      <button class="btn" id="nx">NEXT WORD</button>
+      <button class="link" id="home">Back to menu</button>`,
+    bind(){ $("fwd").onclick=()=>play(soloSpeed(c.fwd)); $("pl").onclick=()=>play(soloSpeed(c.rev)); $("nx").onclick=()=>{ SFX.whoosh(); soloNext(); }; $("home").onclick=()=>go("title"); } };
+  const hints=soloHints().map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
+  const legend=rows?`<p class="dim legend"><i class="fb-g">right spot</i> <i class="fb-y">wrong spot</i> <i class="fb-n">almost</i> <i class="fb-x">not in it</i></p>`:"";
+  return { cls:"center", html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
+    ${catSeg}
+    <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">A random word, played backward. Listen as much as you want.</p></div>
+    ${speedSeg()}
+    <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${P.local.mine?"":"disabled"}>🔄 Flip mine</button></div>
+    ${rows}${legend}${hints}
+    <input class="inp" id="dg" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(P.draft)}">
+    <button class="btn" id="go">GUESS</button>
+    <div class="row" style="gap:10px"><button class="btn ghost" id="hint" ${P.hints>=4?"disabled":""}>💡 Hint</button><button class="btn ghost" id="give">Reveal</button><button class="btn ghost" id="skip">Skip ⏭</button></div>
+    ${tally}`,
+    bind(){
+      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(soloSpeed(c.rev),()=>p.classList.remove("spin")); };
+      $("speed").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed2",D.speed); }catch(e){} render(); play(soloSpeed(c.rev)); });
+      $("scat").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); P.cat=b.dataset.v; try{ localStorage.setItem("bw-solo-cat",P.cat); }catch(e){} P.next=null; soloNext(); });
+      const r=$("rec"); r.onclick=()=>recordInto("rec",r,buf=>{ P.local.mine=reverseBuf(buf); render(); });
+      if(P.local.mine) $("flip").onclick=()=>{ if(activeRec) return; play(P.local.mine); };
+      const g=$("dg"); g.oninput=()=>P.draft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("go").click(); };
+      $("go").onclick=()=>{ if(!P.draft.trim()){ g.focus(); return; } soloGuess(); };
+      $("hint").onclick=()=>{ SFX.tap(); P.hints=Math.min(4,P.hints+1); render(); };
+      $("give").onclick=()=>soloGiveUp();
+      $("skip").onclick=()=>{ SFX.whoosh(); P.played++; P.run=0; soloNext(); };
+    } };
+};
 
 // ================= Online mode: every player on their own phone =================
 const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, mimic:false, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
