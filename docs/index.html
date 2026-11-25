@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#f8f3ec">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -24,10 +24,10 @@
    Look: white and orange, chunky bubble letters (Titan One) with a brownish-green offset shadow for the
    logo and headings, a pudgy rounded body font (Fredoka at a heavy weight), flat shapes. */
 :root{
-  --bg:#ffffff; --card:#f6f2ee; --ink:#1c1917; --dim:#78716c; --line:#e9e2db;
-  --a:#ff6a13; --a-dk:#4e5226; --b:#1c1917; --b-dk:#4e5226; --shadow:#4e5226;
-  --gold:#ff6a13; --gold-dk:#4e5226; --good:#16a34a; --good-dk:#0f7a37; --bad:#dc2626;
-  --paper:#fff4ec; --paper-ink:#1c1917; --on-team:#ffffff;
+  --bg:#f8f3ec; --card:#efe8df; --ink:#2a2622; --dim:#7a726a; --line:#e3d9cd; --surface:#fdfaf5;
+  --a:#e5712d; --a-dk:#55583a; --b:#2a2622; --b-dk:#55583a; --shadow:#55583a;
+  --gold:#e5712d; --gold-dk:#55583a; --good:#26934e; --good-dk:#1b6e3a; --bad:#c83a3a;
+  --paper:#fbf0e5; --paper-ink:#1c1917; --on-team:#ffffff;
   --team:var(--a); --team-dk:var(--a-dk);
   --f-d:"Titan One","Fredoka","Arial Rounded MT Bold",system-ui,sans-serif;
   --f-b:"Fredoka",system-ui,-apple-system,sans-serif;
@@ -65,11 +65,11 @@ b{font-weight:700}
 .center{text-align:center;align-items:center}
 .kicker{font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
 .huge{font-size:clamp(2.6rem,13vw,4rem);line-height:.95}
-.big-t{font-size:clamp(1.8rem,8.5vw,2.4rem);line-height:1.05;text-shadow:.04em .06em 0 rgba(78,82,38,.28)}
+.big-t{font-size:clamp(1.8rem,8.5vw,2.4rem);line-height:1.05;text-shadow:.04em .06em 0 rgba(85,88,58,.28)}
 
 /* buttons: flat, rounded, a small press */
 .btn{font-family:var(--f-d);font-weight:600;font-size:1.3rem;border:none;border-radius:16px;padding:16px 20px;cursor:pointer;width:100%;
-  background:var(--a);color:#fff;box-shadow:0 4px 0 var(--a-dk);transition:transform .06s, box-shadow .06s;letter-spacing:.02em;text-shadow:0 .08em 0 rgba(78,82,38,.55)}
+  background:var(--a);color:#fff;box-shadow:0 4px 0 var(--a-dk);transition:transform .06s, box-shadow .06s;letter-spacing:.02em;text-shadow:0 .08em 0 rgba(85,88,58,.55)}
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--a-dk)}
 .btn.team{background:var(--team);color:#fff;box-shadow:0 4px 0 var(--team-dk)}
 .btn.team:active{box-shadow:0 1px 0 var(--team-dk)}
@@ -87,9 +87,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .mic{--lvl:0;position:relative;width:min(52vw,190px);aspect-ratio:1;max-width:100%;border-radius:50%;border:none;cursor:pointer;color:#fff;
   background:var(--a);box-shadow:0 6px 0 var(--a-dk);display:grid;place-items:center;transition:transform .1s;isolation:isolate}
 /* level ring: scaled with transform so the live meter is composited instead of repainting a shadow every frame */
-.mic::before{content:"";position:absolute;inset:-8px;border-radius:50%;background:rgba(255,106,19,.18);z-index:-1;pointer-events:none;
+.mic::before{content:"";position:absolute;inset:-8px;border-radius:50%;background:rgba(229,113,45,.18);z-index:-1;pointer-events:none;
   transform:scale(calc(1 + var(--lvl)*.38));transition:transform .08s linear;will-change:transform}
-.mic.done::before{background:rgba(22,163,74,.16)}
+.mic.done::before{background:rgba(38,147,78,.16)}
 .mic:active{transform:translateY(4px);box-shadow:0 2px 0 var(--a-dk)}
 .mic svg{width:36%;height:36%}
 .mic.rec{animation:throb 1s infinite}
@@ -143,7 +143,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .bet .m{font-size:.75rem;opacity:.85;font-weight:600}
 
 /* inputs */
-.inp{width:100%;box-sizing:border-box;font:600 1.3rem var(--f-b);padding:14px;border-radius:14px;border:2px solid var(--line);background:#fff;color:var(--ink);text-align:center}
+.inp{width:100%;box-sizing:border-box;font:600 1.3rem var(--f-b);padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--surface);color:var(--ink);text-align:center}
 .inp:focus{border-color:var(--a);outline:none}
 .sm{font-size:1rem;padding:11px;text-align:left}
 
@@ -168,7 +168,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .title .huge,.code{-webkit-text-stroke:.09em var(--ink);paint-order:stroke fill;text-shadow:.05em .08em 0 var(--shadow)}
 .title .huge:not(.mirror){color:#fff}
 .seg{display:flex;flex-wrap:wrap;gap:8px}
-.seg button{font:600 .95rem var(--f-b);padding:9px 14px;border-radius:999px;border:none;background:#fff;color:var(--dim);cursor:pointer}
+.seg button{font:600 .95rem var(--f-b);padding:9px 14px;border-radius:999px;border:none;background:var(--surface);color:var(--dim);cursor:pointer}
 .seg button[aria-checked="true"]{background:var(--a);color:#fff}
 .lbl{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
 .teamrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -177,9 +177,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .err{color:var(--bad);text-align:center}
 
 /* overlay menu */
-.overlay{position:fixed;inset:0;background:rgba(28,25,23,.4);z-index:20;overflow:auto;
+.overlay{position:fixed;inset:0;background:rgba(42,38,34,.35);z-index:20;overflow:auto;
   padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px))}
-.overlay .card{max-width:480px;margin:0 auto;background:#fff}
+.overlay .card{max-width:480px;margin:0 auto;background:var(--surface)}
 .overlay ul{margin:0;padding-left:20px;font-weight:500;display:flex;flex-direction:column;gap:6px}
 .tag{font-size:.65rem;color:var(--a);border:1px solid var(--a);border-radius:4px;padding:0 4px;margin-left:4px;font-weight:600}
 #fx{position:fixed;inset:0;pointer-events:none;z-index:30;width:100%;height:100%}
@@ -192,16 +192,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .pl.off{opacity:.45}
 
 /* daily */
-.daily-cta{border:2px solid var(--a);color:var(--a);background:#fff;box-shadow:none}
+.daily-cta{border:2px solid var(--a);color:var(--a);background:var(--surface);box-shadow:none}
 .daily-cta:active{background:var(--paper)}
 .drow{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:var(--card);font-weight:600;text-align:left;width:100%;box-sizing:border-box}
-.drow.no span{color:var(--bad)} .drow.ok{background:#e8f7ee} .drow.ok span{color:var(--good)}
+.drow.no span{color:var(--bad)} .drow.ok{background:#e4efe5} .drow.ok span{color:var(--good)}
 .hint{padding:8px 14px;border-radius:12px;background:var(--paper);color:var(--ink);font-weight:600;width:100%;box-sizing:border-box;text-align:left;letter-spacing:.02em}
 .fbw{display:flex;flex-wrap:wrap;gap:6px;flex:1}
 .fbw i,.legend i{font-style:normal;padding:3px 9px;border-radius:8px;font-weight:600}
-.fb-g{background:var(--good);color:#fff} .fb-y{background:#f5b400;color:#1c1917} .fb-n{background:#ffd9bf;color:#1c1917} .fb-x{background:#e7e2dd;color:var(--dim)}
-.heat{font-style:normal;font-size:.8rem;font-weight:600;white-space:nowrap;padding:3px 8px;border-radius:999px;background:#fff}
-.heat.h3{color:var(--good)} .heat.h2{color:var(--a)} .heat.h1{color:#b45309} .heat.h0{color:var(--dim)}
+.fb-g{background:var(--good);color:#fff} .fb-y{background:#daa71b;color:#2a2622} .fb-n{background:#f8dac6;color:#2a2622} .fb-x{background:#e5ddd3;color:var(--dim)}
+.heat{font-style:normal;font-size:.8rem;font-weight:600;white-space:nowrap;padding:3px 8px;border-radius:999px;background:var(--surface)}
+.heat.h3{color:var(--good)} .heat.h2{color:var(--a)} .heat.h1{color:#a1561c} .heat.h0{color:var(--dim)}
 .legend{font-size:.75rem;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .legend i{font-size:.75rem;padding:2px 7px}
 .seg.speed{justify-content:center}
@@ -461,7 +461,7 @@ const buzz = ms => { try{ navigator.vibrate && navigator.vibrate(ms) }catch(e){}
 const fx=document.getElementById("fx"), fxg=fx.getContext("2d"); let parts=[], fxOn=false;
 function confetti(n=140){
   if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const w=innerWidth, cols=["#ff6a13","#ff9a52","#1c1917","#ffc49a","#cc4f05","#78716c"];
+  const w=innerWidth, cols=["#e5712d","#ec9d65","#2a2622","#f4c6a5","#b6551b","#7a726a"];
   for(let i=0;i<n;i++) parts.push({x:w/2+(Math.random()-.5)*80,y:innerHeight*.35,vx:(Math.random()-.5)*14,vy:-Math.random()*15-5,r:Math.random()*6+4,c:cols[i%cols.length],a:Math.random()*6,va:(Math.random()-.5)*.4,life:120+Math.random()*60});
   if(!fxOn){ fxOn=true; requestAnimationFrame(tickFx); }
 }
@@ -682,7 +682,7 @@ const VIEWS = {
       bind(){ $("go").onclick=()=>{ if(pts()) go("bet","whoosh"); else afterBet(); }; } };
   },
   bet(){
-    const hues=["#ffa463","#ff9550","#ff863d","#ff782a","#ff6a13","#e85a05"];
+    const hues=["#eea774","#ec9963","#ea8b52","#e87e41","#e5712d","#cf601e"];
     return { cls:"center", html:`<span class="kicker">${esc(team().name)} · ${esc(S.turn.cat)}</span><h2 class="big-t">How big are you going?</h2>
       <div class="bets">${[1,2,3,4,5,6].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>
       <p class="dim">Safe and small, or go big and risk it.</p>`,
@@ -1214,7 +1214,7 @@ const ONLINE_VIEWS = {
   bet(){
     const s=O.st, t=s.turn;
     if(t.speakerId!==O.pid) return { cls:"center", html: waitCard(`${esc(oname(t.speakerId))} is placing a bet`, `${esc(s.teamNames[t.team])} team · ${esc(t.cat)}`, t.speakerId) };
-    const hues=["#ffa463","#ff9550","#ff863d","#ff782a","#ff6a13","#e85a05"];
+    const hues=["#eea774","#ec9963","#ea8b52","#e87e41","#e5712d","#cf601e"];
     return { cls:"center", html:`<span class="kicker">You're the Speaker · ${esc(t.cat)}</span><h2 class="big-t">How big are you going?</h2>
       <div class="bets">${[1,2,3,4,5,6].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>`,
       bind(){ document.querySelectorAll(".bet").forEach(b=>b.onclick=()=>{ SFX.coin(); buzz(15); send({type:"bet",level:+b.dataset.l}); }); } };
