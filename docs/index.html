@@ -840,7 +840,7 @@ const VIEWS = {
 };
 // Pass one phone: a turn counts once its result is settled (the reveal screen is left). Casual turns
 // nobody marked as got or missed are not counted.
-function teamStat(t){ if(t.counted || t.correct==null || !t.word) return; t.counted=true; statWord("team",t.correct,t.cat,diffKey(t.diff,S.difficulty)); }
+function teamStat(t){ if(t.counted || t.correct==null || !t.word) return; t.counted=true; statWord("team",t.correct,t.cat,t.drawn?diffKey(okDiff(S.diff)):null); }
 function t_hint(){ return `Category: ${S.turn.cat}${pts()?` · worth ${pointsFor(S.turn.level)}`:""}`; }
 function applyScore(sign){ const t=S.turn, d=t.correct?pointsFor(t.level):-penaltyFor(t.level); S.teams[t.team].score+=sign*d; if(sign>0) t.log.d=d; }
 function finish(correct){
@@ -912,7 +912,7 @@ async function dailyGuess(text){
     st.guesses.push({ text:text.trim(), ok:j.correct, fb:j.fb }); st.hints=j.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
     if(j.over){ st.over=true; st.won=j.correct; st.word=j.word;
       const s=dstats(); s.played++; if(j.correct){ s.wins++; s.streak = s.lastWin===D.info.n-1 ? s.streak+1 : 1; s.best=Math.max(s.best,s.streak); s.lastWin=D.info.n; } else s.streak=0; s.lastPlayed=D.info.n; dsave(DSTATS,s);
-      statWord("daily",j.correct,D.info.cat,diffKey(D.info.diff));
+      statWord("daily",j.correct,D.info.cat,null);
       if(j.correct){ SFX.win(); confetti(); buzz([40,60,40]); } else { SFX.lose(); buzz(200); }
     } else { SFX.lose(); buzz(80); }
     dsave(DKEY,st); D.draft="";
@@ -1005,7 +1005,7 @@ function soloSpeed(buf){ if(!buf) return null; let m=SOLO_CACHE.get(buf); if(!m)
 function soloPick(){
   const cat = P.cat==="Mixed" ? CATS[Math.floor(Math.random()*CATS.length)] : P.cat;
   const d = drawWord(cat,null,P.diff);
-  return { word:d.word, syl:d.syl, cat };
+  return { word:d.word, syl:d.syl, cat, diff:P.diff };
 }
 async function soloLoad(item){
   const r=await fetch("/api/say?w="+encodeURIComponent(item.word)); if(!r.ok) throw new Error("The voice didn't load. Tap Next word to try another.");
@@ -1067,7 +1067,7 @@ function soloGuess(){
   render();
 }
 function soloGiveUp(){ if(P.done || P.loading) return; P.done=true; P.won=false; P.played++; P.run=0; soloStat(false); SFX.lose(); render(); }
-function soloStat(ok){ if(P.cur) statWord("solo",ok,P.cur.cat,diffKey(P.cur.diff,P.diff)); }
+function soloStat(ok){ if(P.cur) statWord("solo",ok,P.cur.cat,diffKey(P.cur.diff||P.diff)); }
 
 VIEWS.solo = function(){
   const catSeg = `<div class="seg speed" id="scat">${[...CATS,"Mixed"].map(c=>`<button type="button" role="radio" aria-checked="${c===P.cat}" data-v="${esc(c)}">${esc(c)}</button>`).join("")}</div>`;
@@ -1136,15 +1136,16 @@ const randCode = n => { const A="BCDFGHJKLMNPQRSTVWXZ23456789", r=crypto.getRand
 const stCode = () => { let c=""; try{ c=localStorage.getItem(ST_CODE)||""; }catch(e){} if(!c){ c=randCode(10); try{ localStorage.setItem(ST_CODE,c); }catch(e){} } return c; };
 const stDev = () => { let d=""; try{ d=localStorage.getItem(ST_DEV)||""; }catch(e){} if(!d){ d=randCode(12); try{ localStorage.setItem(ST_DEV,d); }catch(e){} } return d; };
 const fmtCode = c => c.slice(0,5)+"-"+c.slice(5);
-const DIFFS = { easy:"Easy", normal:"Normal", hard:"Hard" };
-// Difficulty of the word being played. Words without one are the standard set, which is Normal.
-const diffKey = (...xs) => { const d=xs.find(x=>typeof x==="string" && x); return d && DIFFS[d.toLowerCase()] ? d.toLowerCase() : "normal"; };
+const DIFF_LABEL = Object.fromEntries(DIFFS);
+// Difficulty of a word drawn from the list. Words a player typed in, and Daily words, have none and
+// are left out of the difficulty breakdown.
+const diffKey = d => typeof d==="string" && DIFF_LABEL[d] ? d : null;
 const bump = (o,k,ok) => { const r=o[k]||(o[k]={p:0,w:0}); r.p++; if(ok) r.w++; };
 // One finished word that this player guessed (or tried to).
 function statWord(mode,ok,cat,diff){
   ok=!!ok; ST.words++; if(ok) ST.got++;
   ST.streak = ok ? ST.streak+1 : 0; ST.best=Math.max(ST.best,ST.streak);
-  bump(ST.modes,mode,ok); if(cat) bump(ST.cat,cat,ok); bump(ST.diff,diff||"normal",ok);
+  bump(ST.modes,mode,ok); if(cat) bump(ST.cat,cat,ok); if(diff) bump(ST.diff,diff,ok);
   statSave();
 }
 function statGame(mode){ ST.modes[mode].g=(ST.modes[mode].g|0)+1; statSave(); }
@@ -1204,9 +1205,9 @@ VIEWS.stats = function(){
   const A=statsAll(), M=A.modes, d=dstats(), code=stCode();
   const bars = (obj,label) => Object.entries(obj).filter(([,r])=>r.p).sort((x,y)=>y[1].p-x[1].p).map(([k,r])=>
     `<div class="srow"><span>${esc(label?label(k):k)}</span><span class="sbar"><i style="width:${Math.round(100*r.w/r.p)}%"></i></span><b>${r.w}/${r.p}</b><em>${pct(r.w,r.p)}</em></div>`).join("");
-  const diffOrder = Object.fromEntries(Object.keys(DIFFS).filter(k=>A.diff[k]).map(k=>[k,A.diff[k]]));
+  const diffOrder = Object.fromEntries(DIFFS.map(([k])=>k).filter(k=>A.diff[k]&&A.diff[k].p).map(k=>[k,A.diff[k]]));
   const mode = (name,n,line) => `<div class="mrow"><b>${name}</b><span>${n?line:"Not played yet"}</span></div>`;
-  const cats=bars(A.cat), diffs=Object.keys(diffOrder).length>1?bars(diffOrder,k=>DIFFS[k]):"";
+  const cats=bars(A.cat), diffs=Object.keys(diffOrder).length?bars(diffOrder,k=>DIFF_LABEL[k]):"";
   const empty=!A.words && !M.online.sp && !M.team.g && !M.online.g;
   return { key:"s", html:`<h2 class="big-t">Your stats</h2>
     ${empty?`<p class="dim">Nothing yet. Play any mode and every word you guess is counted here.</p>`:""}
@@ -1313,7 +1314,7 @@ function onState(prev){
   }
   // Stats: a turn counts for this player when the room moves on from its reveal (so a re-marked result is final).
   if(prev && prev.phase==="reveal" && prev.turn && (s.phase!=="reveal" || !t || t.n!==prev.turn.n)){
-    const pt=prev.turn, dk=diffKey(pt.diff,prev.settings&&prev.settings.difficulty);
+    const pt=prev.turn, dk=pt.drawn?diffKey(okDiff(prev.settings&&prev.settings.difficulty)):null;
     if(pt.correct!=null && pt.word){ if(pt.guesserId===O.pid) statWord("online",pt.correct,pt.cat,dk); else if(pt.speakerId===O.pid) statSpoke(pt.correct); }
   }
   if(prev && prev.phase!=="final" && s.phase==="final" && s.players[O.pid]) statGame("online");
