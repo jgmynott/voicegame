@@ -540,7 +540,7 @@ function menuHTML(){
       <li>The other team picks a word in the category (or the app draws one).</li>
       <li>The Speaker says it, hears it backward as many times as they want, then says the backward version from memory.</li>
       <li>That copy is flipped and played to the Guesser, who guesses the original.</li>
-      <li>Points mode: bet 3 to 8 syllables. Win ${PTS_PER_SYL} points per syllable, miss and lose half.</li>
+      <li>Points mode: bet 1 to 6 syllables. Win ${PTS_PER_SYL} points per syllable, miss and lose half.</li>
     </ul>
     <p class="lbl">Still to decide <span class="tag">GUESS</span></p>
     <ul><li>Guesser hears the clip ${S.guesserPlays||"unlimited"} time${S.guesserPlays===1?"":"s"}.</li><li>One typed guess. Close spellings count, and you can overrule the call.</li><li>${S.rounds} rounds, no timer, no steals.</li></ul>
@@ -627,7 +627,7 @@ const VIEWS = {
   bet(){
     const hues=["#ffa463","#ff9550","#ff863d","#ff782a","#ff6a13","#e85a05"];
     return { cls:"center", html:`<span class="kicker">${esc(team().name)} · ${esc(S.turn.cat)}</span><h2 class="big-t">How big are you going?</h2>
-      <div class="bets">${[3,4,5,6,7,8].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>
+      <div class="bets">${[1,2,3,4,5,6].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>
       <p class="dim">Safe and small, or go big and risk it.</p>`,
       bind(){ document.querySelectorAll(".bet").forEach(b=>b.onclick=()=>{ S.turn.level=+b.dataset.l; SFX.coin(); buzz(15); afterBet(); }); } };
   },
@@ -1121,7 +1121,7 @@ const ONLINE_VIEWS = {
     if(t.speakerId!==O.pid) return { cls:"center", html: waitCard(`${esc(oname(t.speakerId))} is placing a bet`, `${esc(s.teamNames[t.team])} team · ${esc(t.cat)}`, t.speakerId) };
     const hues=["#ffa463","#ff9550","#ff863d","#ff782a","#ff6a13","#e85a05"];
     return { cls:"center", html:`<span class="kicker">You're the Speaker · ${esc(t.cat)}</span><h2 class="big-t">How big are you going?</h2>
-      <div class="bets">${[3,4,5,6,7,8].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>`,
+      <div class="bets">${[1,2,3,4,5,6].map((n,i)=>`<button class="bet" data-l="${n}" style="background:${hues[i]};animation-delay:${i*50}ms"><span class="n">${n}</span><span class="s">SYLLABLES</span><span class="p">+${pointsFor(n)}</span><span class="m">miss −${penaltyFor(n)}</span></button>`).join("")}</div>`,
       bind(){ document.querySelectorAll(".bet").forEach(b=>b.onclick=()=>{ SFX.coin(); buzz(15); send({type:"bet",level:+b.dataset.l}); }); } };
   },
   pick(){

@@ -65,7 +65,7 @@ def add(cat, phrase, cap=None):
     k = phrase.lower()
     if not phrase or k in seen: return False
     n = syl_any(phrase)
-    if n < 1: dropped.append(phrase); return False
+    if n < 1 or n > 6: dropped.append(phrase); return False
     seen.add(k); out[cat].setdefault(n, []).append(phrase); return True
 
 for p in SAYINGS.split("|"): add("Sayings", p)
