@@ -274,6 +274,52 @@ function reverseBuf(buf){
   for(let ch=0;ch<buf.numberOfChannels;ch++){ const a=buf.getChannelData(ch), b=out.getChannelData(ch), n=a.length; for(let i=0;i<n;i++) b[i]=a[n-1-i]; }
   return out;
 }
+// Clean a recording: band-pass to the voice range (cuts rumble, hum and hiss),
+// then a soft noise gate that quiets the gaps between words down to near silence.
+async function cleanBuf(buf){
+  try{
+    const sr=buf.sampleRate, n=buf.length;
+    const off=new OfflineAudioContext(1,n,sr), src=off.createBufferSource(); src.buffer=buf;
+    const hp=off.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=110; hp.Q.value=0.7;
+    const hp2=off.createBiquadFilter(); hp2.type="highpass"; hp2.frequency.value=110; hp2.Q.value=0.7;
+    const lp=off.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=7000; lp.Q.value=0.7;
+    src.connect(hp); hp.connect(hp2); hp2.connect(lp); lp.connect(off.destination); src.start();
+    const out=await off.startRendering(), d=out.getChannelData(0);
+    const fr=Math.max(64,Math.round(sr*0.02)), nf=Math.ceil(n/fr), rms=new Float32Array(nf);
+    for(let f=0;f<nf;f++){ let s=0; const a=f*fr, b=Math.min(n,a+fr); for(let i=a;i<b;i++) s+=d[i]*d[i]; rms[f]=Math.sqrt(s/Math.max(1,b-a)); }
+    const sorted=Array.from(rms).sort((x,y)=>x-y), floor=sorted[Math.floor(nf*0.15)]||0, peak=sorted[nf-1]||0;
+    if(peak>floor*4){
+      const open=Math.max(floor*3, peak*0.06), shut=open*0.6;
+      const g=new Float32Array(nf); let on=false, hold=0;
+      for(let f=0;f<nf;f++){ if(rms[f]>open){ on=true; hold=8; } else if(rms[f]<shut){ if(hold>0) hold--; else on=false; } g[f]=on?1:0.06; }
+      for(let f=1;f<nf;f++) g[f]=Math.max(g[f], g[f-1]*0.7);           // release
+      for(let f=nf-2;f>=0;f--) g[f]=Math.max(g[f], g[f+1]*0.6);        // attack, so word starts aren't clipped
+      let mx=0;
+      for(let i=0;i<n;i++){ const f=i/fr, k=Math.min(nf-1,Math.floor(f)), k2=Math.min(nf-1,k+1), t=f-k; d[i]*= g[k]*(1-t)+g[k2]*t; const v=Math.abs(d[i]); if(v>mx) mx=v; }
+      if(mx>0 && mx<0.7){ const s=0.7/mx; for(let i=0;i<n;i++) d[i]*=s; }
+    }
+    return out;
+  }catch(e){ return buf; }
+}
+// Slow speech down without dropping the pitch (WSOLA time-stretch). rate<1 is slower.
+function stretchBuf(buf,rate){
+  if(!rate || rate>=0.99) return buf;
+  const sr=buf.sampleRate, x=buf.getChannelData(0), N=Math.round(sr*0.046), H=N>>1, tol=Math.round(sr*0.012);
+  const outLen=Math.ceil(x.length/rate)+N, y=new Float32Array(outLen), wsum=new Float32Array(outLen);
+  const win=new Float32Array(N); for(let i=0;i<N;i++) win[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));
+  let prev=0, o=0;
+  for(;;o+=H){
+    const center=Math.round(o*rate); if(center+N+tol>=x.length) break;
+    let best=center;
+    if(o>0){ const nat=prev+H; let bestC=-Infinity;
+      for(let k=-tol;k<=tol;k+=2){ const p=center+k; if(p<0||p+N>=x.length) continue; let c=0; for(let i=0;i<N;i+=4) c+=x[p+i]*x[nat+i]; if(c>bestC){ bestC=c; best=p; } } }
+    for(let i=0;i<N;i++){ y[o+i]+=x[best+i]*win[i]; wsum[o+i]+=win[i]; }
+    prev=best;
+  }
+  const len=Math.min(outLen,o+N), out=ac().createBuffer(1,len,sr), z=out.getChannelData(0);
+  for(let i=0;i<len;i++) z[i]=wsum[i]>1e-3?y[i]/wsum[i]:0;
+  return out;
+}
 function trimBuf(buf){
   const d=buf.getChannelData(0); let peak=0; for(let i=0;i<d.length;i++){ const v=Math.abs(d[i]); if(v>peak) peak=v; }
   const th=Math.max(0.015,peak*0.06); let st=0, en=d.length-1;
@@ -287,7 +333,11 @@ function trimBuf(buf){
 }
 async function getStream(){
   if(stream && stream.active) return stream;
-  stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  // Ask the phone for its voice processing: noise suppression, echo cancellation, auto gain, mono.
+  // voiceIsolation is used where the browser supports it (newer Chrome); others ignore it.
+  const want={echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1,voiceIsolation:true};
+  try{ stream = await navigator.mediaDevices.getUserMedia({audio:want}); }
+  catch(e){ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
   return stream;
 }
 let activeRec=null;
@@ -448,7 +498,7 @@ async function recordInto(key,btn,onDone){
   mr.onstop=async()=>{
     clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
     SFX.recOff(); buzz(20);
-    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await decode(await blob.arrayBuffer())); S.turn[key]=buf; onDone(buf,blob); }
+    try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await cleanBuf(await decode(await blob.arrayBuffer()))); S.turn[key]=buf; onDone(buf,blob); }
     catch(e){ S.micError="Could not read that recording. Try again."; render(); }
   };
   mr.start(); activeRec=mr; recStart=Date.now();
@@ -711,7 +761,7 @@ function finish(correct){
 
 
 // ---------- Daily BackWord: one word a day, same for everyone ----------
-const D = { speed:(()=>{ try{ return +localStorage.getItem("bw-speed")||0.8; }catch(e){ return 0.8; } })(), info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
+const D = { speed:(()=>{ try{ const v=+localStorage.getItem("bw-speed2"); return [1,0.7,0.5].includes(v)?v:0.7; }catch(e){ return 0.7; } })(), info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
 const DKEY="bw-daily", DSTATS="bw-daily-stats";
 const dload = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) || d; }catch(e){ return d; } };
 const dsave = (k,v) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
@@ -781,8 +831,8 @@ VIEWS.daily = function(){
       <p class="dim">Next word in ${untilNext()}</p>
       <button class="link" id="home">Back to menu</button>`,
       bind(){
-        $("fwd").onclick=()=>{ if(D.fwd) play(D.fwd,null,D.speed); };
-        $("pl").onclick=()=>{ if(D.rev) play(D.rev,null,D.speed); };
+        $("fwd").onclick=()=>{ const s=atSpeed("fwd"); if(s) play(s); };
+        $("pl").onclick=()=>{ const s=atSpeed("rev"); if(s) play(s); };
         $("share").onclick=async()=>{ const t=shareText(st);
           try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(t); D.copied=true; render(); setTimeout(()=>{ D.copied=false; if(S.screen==="daily") render(); },1600); }catch(e){} };
@@ -800,7 +850,7 @@ VIEWS.daily = function(){
     <button class="btn" id="go" ${D.busy?"disabled":""}>${D.busy?"CHECKING…":`GUESS · ${left} LEFT`}</button>
     ${D.err?`<p class="err">${esc(D.err)}</p>`:""}`,
     bind(){
-      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; D.listens++; buzz(15); p.classList.add("spin"); play(D.rev,()=>p.classList.remove("spin"),D.speed); };
+      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; D.listens++; buzz(15); p.classList.add("spin"); play(atSpeed("rev"),()=>p.classList.remove("spin")); };
       bindSpeed();
       const r=$("rec"); r.onclick=()=>recordInto("rec",r,buf=>{ L.mine=reverseBuf(buf); render(); });
       if(mine) $("flip").onclick=()=>{ if(activeRec) return; buzz(10); play(L.mine); };
@@ -809,9 +859,12 @@ VIEWS.daily = function(){
     } };
 };
 
-const SPEEDS=[[1,"Normal"],[0.8,"Slow"],[0.65,"Slower"]];
+const SPEEDS=[[1,"Normal"],[0.7,"Slow"],[0.5,"Slower"]];
+const SCACHE={};
+function atSpeed(which){ const base=which==="fwd"?D.fwd:D.rev; if(!base) return null; const k=which+D.speed+"|"+(D.info&&D.info.n);
+  if(!SCACHE[k]) SCACHE[k]=stretchBuf(base,D.speed); return SCACHE[k]; }
 function speedSeg(){ return `<div class="seg speed" id="speed" role="radiogroup" aria-label="Playback speed">${SPEEDS.map(([v,l])=>`<button type="button" role="radio" aria-checked="${v===D.speed}" data-v="${v}">${l}</button>`).join("")}</div>`; }
-function bindSpeed(){ const el=$("speed"); if(!el) return; el.querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed",D.speed); }catch(e){} render(); if(D.rev) play(D.rev,null,D.speed); }); }
+function bindSpeed(){ const el=$("speed"); if(!el) return; el.querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed2",D.speed); }catch(e){} render(); const s=atSpeed("rev"); if(s) play(s); }); }
 
 // ================= Online mode: every player on their own phone =================
 const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, mimic:false, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
@@ -855,7 +908,7 @@ async function getClip(kind){
   if(O.clips[key]) return O.clips[key];
   const r = await fetch("/api/room/"+O.code+"/clip/"+kind,{cache:"no-store"});
   if(!r.ok) throw new Error("clip "+r.status);
-  const buf = trimBuf(await decode(await r.arrayBuffer()));
+  const buf = trimBuf(await cleanBuf(await decode(await r.arrayBuffer())));
   const v = {buf, rev:reverseBuf(buf)}; O.clips[key]=v; return v;
 }
 async function upload(kind, blob){
