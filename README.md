@@ -7,6 +7,12 @@ No build step. Hosted on Cloudflare Workers: static files from `docs/`, plus `sr
 - `docs/index.html`: the whole game client (HTML, CSS, JS)
 - `src/worker.js`: room server for online play
 - `docs/sw.js`, `manifest.webmanifest`, `icon-*.png`: home screen app support
+- `docs/fonts/`: the Fredoka font, served from this site (no Google Fonts request)
+- `docs/_headers`: browser cache rules for the static files (long cache for the font and icons)
+
+The service worker serves the page network first (falling back to the cached copy after 2.5 seconds
+or when offline) and everything else from cache, refreshed in the background. Bump `CACHE` in
+`docs/sw.js` when its precache list changes.
 
 ## Daily BackWord
 

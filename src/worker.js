@@ -230,9 +230,9 @@ export class Room extends DurableObject {
   members(team) { return this.s.order.filter(id => this.s.players[id] && this.s.players[id].team === team); }
 
   // Each phone gets its own view: the word stays hidden from the guessing side until the reveal.
-  viewFor(pid) {
+  viewFor(pid, connected = this.connectedIds()) {
     const s = this.s, t = s.turn;
-    const v = { ...s, used: undefined, me: pid, connected: this.connectedIds() };
+    const v = { ...s, used: undefined, me: pid, connected };
     if (t) {
       const knows = s.phase === "reveal" || s.phase === "final" || pid === t.speakerId || this.teamOf(pid) !== t.team;
       v.turn = { ...t, word: knows ? t.word : null };
@@ -240,15 +240,23 @@ export class Room extends DurableObject {
     return v;
   }
   connectedIds() { return [...new Set(this.ctx.getWebSockets().map(ws => ws.deserializeAttachment()?.pid).filter(Boolean))]; }
+  // Work out who is connected once per broadcast, and build each distinct view once
+  // (a player with two tabs, or players on the same side of the secret word, share most of the work).
   broadcast() {
-    for (const ws of this.ctx.getWebSockets()) {
-      const a = ws.deserializeAttachment(); if (!a) continue;
-      try { ws.send(JSON.stringify({ type: "state", state: this.viewFor(a.pid) })); } catch (e) {}
-    }
+    const sockets = this.ctx.getWebSockets();
+    const ids = sockets.map(ws => ws.deserializeAttachment()?.pid);
+    const connected = [...new Set(ids.filter(Boolean))];
+    const msgs = new Map();
+    sockets.forEach((ws, i) => {
+      const pid = ids[i]; if (!pid) return;
+      if (!msgs.has(pid)) msgs.set(pid, JSON.stringify({ type: "state", state: this.viewFor(pid, connected) }));
+      try { ws.send(msgs.get(pid)); } catch (e) {}
+    });
   }
   sendErr(ws, msg) { try { ws.send(JSON.stringify({ type: "error", message: msg })); } catch (e) {} }
 
-  async webSocketClose(ws) { this.broadcast(); }
+  // Finish the close handshake so the phone's socket closes now (and it can reconnect) instead of hanging.
+  async webSocketClose(ws) { try { ws.close(1000, "bye"); } catch (e) {} this.broadcast(); }
   async webSocketError(ws) { this.broadcast(); }
 
   async webSocketMessage(ws, raw) {
