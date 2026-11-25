@@ -261,7 +261,7 @@ function ac(){
   unlockLegacy(); return actx;
 }
 // Any tap re-arms audio: iOS suspends or "interrupts" the context after calls, the lock screen and app switches.
-["pointerdown","touchend","keydown"].forEach(ev=>window.addEventListener(ev,()=>{ if(!activeRec) setSession(stream&&stream.active?"play-and-record":"playback"); if(actx) ac(); else unlockLegacy(); },{capture:true,passive:true}));
+["pointerdown","touchend","keydown"].forEach(ev=>window.addEventListener(ev,()=>{ if(!activeRec) setSession(micLive()?"play-and-record":"playback"); if(actx) ac(); else unlockLegacy(); },{capture:true,passive:true}));
 function decode(ab){ return new Promise((res,rej)=>ac().decodeAudioData(ab,res,rej)); }
 function stopPlay(){ if(playing){ const p=playing; playing=null; try{p.stop()}catch(e){} } }
 function play(buf,onEnd,rate){
@@ -330,8 +330,11 @@ function trimBuf(buf){
   for(let ch=0;ch<buf.numberOfChannels;ch++) out.getChannelData(ch).set(buf.getChannelData(ch).subarray(st,en+1));
   return out;
 }
+function micLive(){ try{ return !!stream && stream.getAudioTracks().some(t=>t.readyState==="live" && !t.muted); }catch(e){ return false; } }
 async function getStream(){
-  if(stream && stream.active) return stream;
+  if(micLive()) return stream;
+  // A track the phone ended or muted (call, Siri, background) records silence, so ask again.
+  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=null; }
   setSession("play-and-record");
   // Ask the phone for its voice processing: noise suppression, echo cancellation, auto gain, mono.
   // voiceIsolation is used where the browser supports it (newer Chrome); others ignore it.
@@ -342,8 +345,7 @@ async function getStream(){
 }
 let activeRec=null;
 function stopRec(){ if(activeRec && activeRec.state==="recording") activeRec.stop(); }
-// Turn the mic off when it isn't needed (home screen, app in the background). An open mic keeps the
-// phone's recording indicator on and, on iPhones, routes playback through voice processing, which is quieter.
+// Turn the mic off. Only used when recording can't work in this browser; see ensureMic for why it stays open otherwise.
 let releaseAfterRec=false;
 function releaseMic(){
   if(activeRec){ releaseAfterRec=true; stopRec(); return; } // the recorder's onstop closes the mic
@@ -480,9 +482,9 @@ function tickFx(){
 
 // ---------- mic with level meter ----------
 let analyser=null, meterRaf=0, recTimer=0, recStart=0;
-// The mic is opened once and kept open for the whole game. Chrome and other in-app browsers on
-// iPhone ask for (or delay) mic access on every new request, so it is only closed at the home
-// screen or when the app goes to the background. While it is open iOS uses play-and-record,
+// The mic is opened once per visit (on the first Play, Daily, Free play, Create or Join tap) and
+// kept open. Chrome and other in-app browsers on iPhone ask for (or delay) mic access on every
+// new request, so it is never closed between recordings, screens or modes. While it is open iOS uses play-and-record,
 // which also ignores the silent switch.
 async function ensureMic(){
   try{ await getStream(); S.micError=""; return true; }
@@ -588,7 +590,7 @@ function home(){
   stopRec(); stopPlay();
   if(S.screen==="online") leaveRoom();
   if(S.screen==="setup") keepSetup();
-  S.menu=false; S.screen="title"; releaseMic(); keepAwake(false); render(); window.scrollTo(0,0);
+  S.menu=false; S.screen="title"; keepAwake(false); render(); window.scrollTo(0,0);
   popNav();
 }
 let KEEP_AUDIO=false, lastKey="";
@@ -639,8 +641,8 @@ const VIEWS = {
       <span class="chip" id="wcount" style="${WORD_COUNT?"":"visibility:hidden"}">${WORD_COUNT?WORD_COUNT.toLocaleString():"0,000"} words and phrases</span><p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
       ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKSLANG</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
-        if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); openDaily(); };
-        if($("solo")) $("solo").onclick=()=>{ ac(); SFX.go(); openSolo(); };
+        if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); ensureMic(); openDaily(); };
+        if($("solo")) $("solo").onclick=()=>{ ac(); SFX.go(); ensureMic(); openSolo(); };
         if($("playOnline")) $("playOnline").onclick=()=>{ ac(); SFX.go(); O.err=""; go("online"); }; } };
   },
   setup(){
@@ -1342,8 +1344,9 @@ render();
 addEventListener("load",()=>setTimeout(()=>idle(prefetchDaily),800));
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){
-    // In the background: stop any recording and turn the mic off. It comes back on the next record tap.
-    releaseMic(); if(unlockEl) try{ unlockEl.pause(); }catch(e){}
+    // In the background: stop any recording. The mic stays open (the phone pauses it on its own),
+    // because Chrome and in-app browsers on iPhone ask for access again on every new request.
+    stopRec(); if(unlockEl) try{ unlockEl.pause(); }catch(e){}
   } else {
     if(actx) ac();
     if(wakeWanted && !["title","setup","daily","solo"].includes(S.screen)) keepAwake(true);
