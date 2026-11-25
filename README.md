@@ -1,8 +1,9 @@
 # Reverse Voice Game (working title)
 
-A 2v2 pass-the-phone party game. The Speaker says a word, hears it backward, then says the backward version from memory. That copy is flipped and played to the Guesser, who has to guess the original word.
+A 2v2 party game, played on everyone's own phone or by passing one phone around. The Speaker says a word, hears it backward, then says the backward version from memory. That copy is flipped and played to the Guesser, who has to guess the original word.
 
-Static site, no build step. Served with GitHub Pages from the `main` branch root. Installable to a phone home screen (PWA).
+No build step. Hosted on Cloudflare Workers: static files from `docs/`, plus `src/worker.js`, a small game server (one Durable Object per room code) for online play. See `wrangler.jsonc`. Run locally with `npx wrangler dev`. Installable to a phone home screen (PWA).
 
-- `index.html`: the whole game (HTML, CSS, JS)
-- `sw.js`, `manifest.webmanifest`, `icon-*.png`: home screen app support
+- `docs/index.html`: the whole game client (HTML, CSS, JS)
+- `src/worker.js`: room server for online play
+- `docs/sw.js`, `manifest.webmanifest`, `icon-*.png`: home screen app support

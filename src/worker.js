@@ -1,0 +1,259 @@
+// Game server: one Durable Object per room code. Holds the game state, relays it to every
+// phone over WebSockets, and stores the audio clips so each phone can fetch them.
+import { DurableObject } from "cloudflare:workers";
+
+const PTS_PER_SYL = 10;
+const pointsFor = s => s * PTS_PER_SYL;
+const penaltyFor = s => Math.ceil(pointsFor(s) / 2);
+const CLIP_KINDS = ["orig", "copy"];
+const MAX_CLIP_BYTES = 1_500_000;
+
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url);
+    const m = url.pathname.match(/^\/api\/room\/([A-Z]{4})(\/.*)?$/);
+    if (m) return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(req);
+    if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
+    return env.ASSETS.fetch(req);
+  }
+};
+
+// ---------- pure game helpers ----------
+const norm = s => s.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\b(a|an|the)\b/g, " ").replace(/\s+/g, " ").trim();
+function lev(a, b) {
+  const m = a.length, n = b.length, d = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+export function judge(guess, answer) {
+  const g = norm(guess), a = norm(answer);
+  if (!g) return false;
+  if (g === a || g.replace(/ /g, "") === a.replace(/ /g, "")) return true;
+  return lev(g, a) <= Math.max(1, Math.floor(a.length / 10));
+}
+const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, max);
+
+function freshState(code) {
+  return {
+    code, hostId: null, players: {}, order: [],
+    settings: { mode: "points", source: "opponent", category: "Places", guesserPlays: 2, speakerPlays: 2, rounds: 4 },
+    teamNames: ["Red", "Blue"], scores: [0, 0], turns: [0, 0],
+    phase: "lobby", round: 1, turnTeam: 0, turn: null, history: [], used: [], clipVer: 0
+  };
+}
+
+export class Room extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.words = null;
+    ctx.blockConcurrencyWhile(async () => { this.s = (await ctx.storage.get("s")) || null; });
+  }
+
+  async fetch(req) {
+    const url = new URL(req.url);
+    const code = url.pathname.split("/")[3];
+    if (!this.s) this.s = freshState(code);
+    const rest = url.pathname.split("/").slice(4).join("/");
+
+    if (rest === "ws") {
+      if (req.headers.get("Upgrade") !== "websocket") return new Response("Expected websocket", { status: 426 });
+      const pid = clean(url.searchParams.get("pid"), 40);
+      if (!pid) return new Response("Missing player id", { status: 400 });
+      const pair = new WebSocketPair();
+      this.ctx.acceptWebSocket(pair[1]);
+      pair[1].serializeAttachment({ pid });
+      return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
+    const clipM = rest.match(/^clip\/(orig|copy)$/);
+    if (clipM) {
+      const kind = clipM[1];
+      if (req.method === "PUT") {
+        const pid = clean(url.searchParams.get("pid"), 40);
+        const t = this.s.turn;
+        if (!t || t.speakerId !== pid || this.s.phase !== "speak") return new Response("Not your turn", { status: 403 });
+        const buf = await req.arrayBuffer();
+        if (!buf.byteLength || buf.byteLength > MAX_CLIP_BYTES) return new Response("Bad clip size", { status: 413 });
+        await this.ctx.storage.put("clip:" + kind, { type: req.headers.get("Content-Type") || "audio/webm", data: buf });
+        t.clips[kind] = true;
+        this.s.clipVer++;
+        await this.save();
+        return new Response("ok");
+      }
+      const c = await this.ctx.storage.get("clip:" + kind);
+      if (!c) return new Response("No clip", { status: 404 });
+      return new Response(c.data, { headers: { "Content-Type": c.type, "Cache-Control": "no-store" } });
+    }
+    return new Response("Not found", { status: 404 });
+  }
+
+  async loadWords() {
+    if (this.words) return this.words;
+    const r = await this.env.ASSETS.fetch(new Request("https://assets.local/words.json"));
+    const data = await r.json(), bank = {};
+    for (const [cat, levels] of Object.entries(data)) { bank[cat] = []; for (const [n, arr] of Object.entries(levels)) for (const w of arr) bank[cat].push([w, +n]); }
+    return (this.words = bank);
+  }
+  async draw(cat, level) {
+    const bank = await this.loadWords();
+    let list = (bank[cat] || []).filter(([, n]) => level == null || n === level);
+    if (!list.length) list = Object.values(bank).flat().filter(([, n]) => level == null || n === level);
+    const used = new Set(this.s.used);
+    let pool = list.filter(([w]) => !used.has(w)); if (!pool.length) pool = list;
+    const [w, n] = pool[Math.floor(Math.random() * pool.length)];
+    this.s.used.push(w); if (this.s.used.length > 3000) this.s.used.splice(0, 1000);
+    return { word: w, syl: n };
+  }
+
+  async save() { await this.ctx.storage.put("s", this.s); this.broadcast(); }
+
+  teamOf(pid) { return this.s.players[pid]?.team; }
+  members(team) { return this.s.order.filter(id => this.s.players[id] && this.s.players[id].team === team); }
+
+  // Each phone gets its own view: the word stays hidden from the guessing side until the reveal.
+  viewFor(pid) {
+    const s = this.s, t = s.turn;
+    const v = { ...s, used: undefined, me: pid, connected: this.connectedIds() };
+    if (t) {
+      const knows = s.phase === "reveal" || s.phase === "final" || pid === t.speakerId || this.teamOf(pid) !== t.team;
+      v.turn = { ...t, word: knows ? t.word : null };
+    }
+    return v;
+  }
+  connectedIds() { return [...new Set(this.ctx.getWebSockets().map(ws => ws.deserializeAttachment()?.pid).filter(Boolean))]; }
+  broadcast() {
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment(); if (!a) continue;
+      try { ws.send(JSON.stringify({ type: "state", state: this.viewFor(a.pid) })); } catch (e) {}
+    }
+  }
+  sendErr(ws, msg) { try { ws.send(JSON.stringify({ type: "error", message: msg })); } catch (e) {} }
+
+  async webSocketClose(ws) { this.broadcast(); }
+  async webSocketError(ws) { this.broadcast(); }
+
+  async webSocketMessage(ws, raw) {
+    let m; try { m = JSON.parse(raw); } catch (e) { return; }
+    const pid = ws.deserializeAttachment()?.pid; if (!pid) return;
+    const s = this.s, me = s.players[pid], t = s.turn, isHost = s.hostId === pid;
+    const pts = s.settings.mode === "points";
+    try {
+      switch (m.type) {
+        case "hello": {
+          if (!me) {
+            if (s.phase !== "lobby") {
+              // late joiner goes to the smaller team
+              const team = this.members(0).length <= this.members(1).length ? 0 : 1;
+              s.players[pid] = { name: clean(m.name, 20) || "Player", team };
+            } else {
+              const team = this.members(0).length <= this.members(1).length ? 0 : 1;
+              s.players[pid] = { name: clean(m.name, 20) || "Player", team };
+            }
+            s.order.push(pid);
+          } else if (m.name) me.name = clean(m.name, 20) || me.name;
+          if (!s.hostId || !s.players[s.hostId]) s.hostId = pid;
+          break;
+        }
+        case "team": if (s.phase === "lobby" && me && (m.team === 0 || m.team === 1)) me.team = m.team; break;
+        case "teamName": if (me && (m.team === 0 || m.team === 1)) s.teamNames[m.team] = clean(m.name, 16) || s.teamNames[m.team]; break;
+        case "settings": {
+          if (!isHost || s.phase !== "lobby") return;
+          const x = m.settings || {}, st = s.settings;
+          if (["points", "casual"].includes(x.mode)) st.mode = x.mode;
+          if (["opponent", "random"].includes(x.source)) st.source = x.source;
+          if (typeof x.category === "string") st.category = clean(x.category, 20);
+          if ([0, 1, 2, 3].includes(x.guesserPlays)) st.guesserPlays = x.guesserPlays;
+          if ([2, 4, 6, 8].includes(x.rounds)) st.rounds = x.rounds;
+          break;
+        }
+        case "kick": if (isHost && s.phase === "lobby" && m.pid !== pid) { delete s.players[m.pid]; s.order = s.order.filter(i => i !== m.pid); } break;
+        case "start": {
+          if (!isHost || !["lobby", "final"].includes(s.phase)) return;
+          if (this.members(0).length < 2 || this.members(1).length < 2) return this.sendErr(ws, "Each team needs at least 2 players.");
+          s.scores = [0, 0]; s.turns = [0, 0]; s.round = 1; s.turnTeam = 0; s.history = [];
+          await this.newTurn(); break;
+        }
+        case "bet": {
+          if (s.phase !== "bet" || pid !== t.speakerId || !(m.level >= 3 && m.level <= 8)) return;
+          t.level = m.level; await this.afterBet(); break;
+        }
+        case "pick": {
+          if (s.phase !== "pick" || this.teamOf(pid) === t.team) return;
+          if (m.random) { Object.assign(t, await this.draw(t.cat, pts ? t.level : null), { drawn: true }); }
+          else { const w = clean(m.word, 60); if (!w) return; t.word = w; t.drawn = false; }
+          t.pickedBy = pid; s.phase = "speak"; break;
+        }
+        case "shuffle": {
+          if (s.phase !== "speak" || pid !== t.speakerId || !t.drawn || t.clips.orig) return;
+          Object.assign(t, await this.draw(t.cat, pts ? t.level : null)); break;
+        }
+        case "speakerListen": if (s.phase === "speak" && pid === t.speakerId && t.sPlays > 0) t.sPlays--; break;
+        case "redoOrig": if (s.phase === "speak" && pid === t.speakerId) { t.clips = { orig: false, copy: false }; t.sPlays = s.settings.speakerPlays; } break;
+        case "send": {
+          if (s.phase !== "speak" || pid !== t.speakerId || !t.clips.orig || !t.clips.copy) return;
+          s.phase = "guess"; break;
+        }
+        case "listen": {
+          if (s.phase !== "guess" || pid !== t.guesserId) return;
+          if (s.settings.guesserPlays && t.gPlays <= 0) return;
+          if (s.settings.guesserPlays) t.gPlays--;
+          t.heard = true;
+          ws.send(JSON.stringify({ type: "play" }));
+          break;
+        }
+        case "guess": case "giveup": case "reveal": {
+          if (s.phase !== "guess" || pid !== t.guesserId) return;
+          t.guess = m.type === "guess" ? clean(m.text, 80) : "";
+          t.correct = m.type === "guess" ? judge(t.guess, t.word) : (m.type === "giveup" ? false : null);
+          this.finishTurn(); break;
+        }
+        case "mark": {
+          if (s.phase !== "reveal" || typeof m.correct !== "boolean") return;
+          const last = s.history[s.history.length - 1];
+          if (pts && t.correct !== null) s.scores[t.team] -= t.delta;
+          t.correct = m.correct;
+          if (pts) { t.delta = t.correct ? pointsFor(t.level) : -penaltyFor(t.level); s.scores[t.team] += t.delta; }
+          if (last) { last.ok = t.correct; last.d = t.delta; }
+          break;
+        }
+        case "next": {
+          if (s.phase !== "reveal") return;
+          if (pts && s.round > s.settings.rounds) { s.phase = "final"; break; }
+          await this.newTurn(); break;
+        }
+        case "end": if (s.phase === "reveal" || s.phase === "guess") s.phase = "final"; break;
+        case "lobby": if (isHost) { s.phase = "lobby"; s.turn = null; } break;
+        default: return;
+      }
+    } catch (e) { return this.sendErr(ws, "Something went wrong: " + e.message); }
+    await this.save();
+  }
+
+  async newTurn() {
+    const s = this.s, team = s.turnTeam, mem = this.members(team), n = mem.length;
+    const k = s.turns[team];
+    const cats = Object.keys(await this.loadWords());
+    const cat = s.settings.category === "Mixed" || !cats.includes(s.settings.category) ? cats[Math.floor(Math.random() * cats.length)] : s.settings.category;
+    s.turn = {
+      team, speakerId: mem[k % n], guesserId: mem[(k + 1) % n], cat, level: null, word: null, syl: null, drawn: false,
+      sPlays: s.settings.speakerPlays, gPlays: s.settings.guesserPlays || 0, clips: { orig: false, copy: false },
+      heard: false, guess: "", correct: null, delta: 0, n: (s.history.length + 1)
+    };
+    await this.ctx.storage.delete(["clip:orig", "clip:copy"]);
+    if (s.settings.mode === "points") s.phase = "bet"; else await this.afterBet();
+  }
+  async afterBet() {
+    const s = this.s, t = s.turn;
+    if (s.settings.source === "opponent") s.phase = "pick";
+    else { Object.assign(t, await this.draw(t.cat, s.settings.mode === "points" ? t.level : null), { drawn: true }); s.phase = "speak"; }
+  }
+  finishTurn() {
+    const s = this.s, t = s.turn, pts = s.settings.mode === "points";
+    if (pts) { t.delta = t.correct ? pointsFor(t.level) : -penaltyFor(t.level); s.scores[t.team] += t.delta; }
+    s.history.push({ team: t.team, word: t.word, level: t.level, d: t.delta, ok: t.correct, speaker: s.players[t.speakerId]?.name, guesser: s.players[t.guesserId]?.name });
+    s.turns[t.team]++;
+    s.turnTeam = 1 - s.turnTeam; if (s.turnTeam === 0) s.round++;
+    s.phase = "reveal";
+  }
+}
