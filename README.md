@@ -9,6 +9,7 @@ No build step. Hosted on Cloudflare Workers: static files from `docs/`, plus `sr
 - `docs/sw.js`, `manifest.webmanifest`, `icon-*.png`: home screen app support
 - `docs/fonts/`: Titan One (bubble letters for the logo, headings and buttons) and Fredoka (body text), served from this site (no Google Fonts request)
 - `docs/_headers`: browser cache rules for the static files (long cache for the font and icons)
+- All-time stats: every finished word in every mode is counted in localStorage (`bs-stats`). Each phone backs its copy up to the `Stats` Durable Object under a 10-character stats code (`/api/stats/CODE`); phones that share a code add their counts together on the stats screen.
 
 The service worker serves the page network first (falling back to the cached copy after 2.5 seconds
 or when offline) and everything else from cache, refreshed in the background. Bump `CACHE` in
@@ -22,7 +23,22 @@ Workers AI text-to-speech, caches the clip for the day, and checks guesses at `/
 Daily answers are picked to stay clear when reversed: `tools/clarity.py` scores each word from its
 CMU dictionary pronunciation (diphthongs like the "ai" in nightingale, r-colored vowels, consonant
 clusters, dark l, extra words and syllables all add difficulty), and `tools/daily.py` keeps only
-2 to 4 syllable words with no "ai", "oi" or "ow" sound and a low score. Free play draws from
-`docs/clear.json` (built by `tools/freeplay.py`) the same way, a bit more loosely.
+2 to 4 syllable words with no "ai", "oi" or "ow" sound and a low score.
+
+## Difficulty
+
+Every category has Easy, Normal and Hard. Normal is the whole word list. `tools/levels.py` ranks each
+category by clarity score and writes `docs/levels.json`: Easy is the clearest 40% (at most 4 syllables),
+Hard the least clear 40%. The team game and online rooms default to Normal, Free play to Easy.
+
 Players get 5 guesses, a new hint after each miss, a "say it back and flip" helper, stats,
 a streak and a share button.
+
+## Settings and extras
+
+Settings (menu or the home screen link) are saved on the phone under `bs-settings`: effects and voice
+volume, vibration, starting listening speed, theme (match phone, light, dark), larger text and reduce motion.
+First visit shows a short how-to-play walkthrough (`bs-toured` marks it seen). Games on one phone support
+2 to 4 players per team, team colors, restart and skip word from the menu. An optional 30 or 60 second guess
+timer works on one phone and in online rooms (room setting `timer`). Daily has a give up option
+(`giveup: true` on `/api/daily/guess`), which ends the puzzle as a loss.

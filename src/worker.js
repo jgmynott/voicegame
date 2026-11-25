@@ -18,6 +18,8 @@ export default {
     }
     const m = url.pathname.match(/^\/api\/room\/([A-Z]{4})(\/.*)?$/);
     if (m) return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(req);
+    const sm = url.pathname.match(/^\/api\/stats\/([A-Z0-9]{10})$/);
+    if (sm) return env.STATS.get(env.STATS.idFromName(sm[1])).fetch(req);
     if (url.pathname.startsWith("/api/daily")) return daily(req, env, url);
     if (url.pathname === "/api/say" && req.method === "GET") {
       const w = (url.searchParams.get("w") || "").trim().slice(0, 80);
@@ -181,7 +183,7 @@ const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f]/g, "").trim()
 function freshState(code) {
   return {
     code, hostId: null, players: {}, order: [],
-    settings: { mode: "points", source: "opponent", category: "Places", guesserPlays: 2, speakerPlays: 2, rounds: 4, timer: 0 },
+    settings: { mode: "points", source: "opponent", category: "Places", difficulty: "normal", guesserPlays: 2, speakerPlays: 2, rounds: 4, timer: 0 },
     teamNames: ["Red", "Blue"], scores: [0, 0], turns: [0, 0],
     phase: "lobby", round: 1, turnTeam: 0, turn: null, history: [], used: [], clipVer: 0
   };
@@ -239,10 +241,22 @@ export class Room extends DurableObject {
     for (const [cat, levels] of Object.entries(data)) { bank[cat] = []; for (const [n, arr] of Object.entries(levels)) for (const w of arr) bank[cat].push([w, +n]); }
     return (this.words = bank);
   }
+  // Easy and Hard word sets (docs/levels.json, built by tools/levels.py). Normal uses every word.
+  async loadLevels() {
+    if (this.levels) return this.levels;
+    try {
+      const r = await this.env.ASSETS.fetch(new Request("https://assets.local/levels.json"));
+      const j = await r.json();
+      this.levels = { easy: new Set(j.easy), hard: new Set(j.hard) };
+    } catch (e) { this.levels = {}; }
+    return this.levels;
+  }
   async draw(cat, level) {
     const bank = await this.loadWords();
     let list = (bank[cat] || []).filter(([, n]) => level == null || n === level);
     if (!list.length) list = Object.values(bank).flat().filter(([, n]) => level == null || n === level);
+    const set = (await this.loadLevels())[this.s.settings.difficulty];
+    if (set) { const f = list.filter(([w]) => set.has(w.toLowerCase())); if (f.length) list = f; }
     const used = new Set(this.s.used);
     let pool = list.filter(([w]) => !used.has(w)); if (!pool.length) pool = list;
     const [w, n] = pool[Math.floor(Math.random() * pool.length)];
@@ -315,6 +329,7 @@ export class Room extends DurableObject {
           if (["points", "casual"].includes(x.mode)) st.mode = x.mode;
           if (["opponent", "random"].includes(x.source)) st.source = x.source;
           if (typeof x.category === "string") st.category = clean(x.category, 20);
+          if (["easy", "normal", "hard"].includes(x.difficulty)) st.difficulty = x.difficulty;
           if ([0, 1, 2, 3].includes(x.guesserPlays)) st.guesserPlays = x.guesserPlays;
           if ([2, 4, 6, 8].includes(x.rounds)) st.rounds = x.rounds;
           if ([0, 30, 60].includes(x.timer)) st.timer = x.timer;
@@ -408,5 +423,37 @@ export class Room extends DurableObject {
     s.turns[t.team]++;
     s.turnTeam = 1 - s.turnTeam; if (s.turnTeam === 0) s.round++;
     s.phase = "reveal";
+  }
+}
+
+// ---------- All-time stats backup ----------
+// One Durable Object per stats code. Each phone on that code stores its own copy of its counters
+// (key "d:<device id>"); the phones add them up themselves. Nothing here identifies a person.
+const MAX_STATS_BYTES = 24_000, MAX_STATS_DEVICES = 20;
+export class Stats extends DurableObject {
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (req.method === "GET") {
+      const all = await this.ctx.storage.list({ prefix: "d:" });
+      const devices = {};
+      for (const [k, v] of all) devices[k.slice(2)] = v;
+      return json({ devices });
+    }
+    if (req.method === "PUT") {
+      const dev = (url.searchParams.get("dev") || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 24);
+      if (!dev) return new Response("Missing device", { status: 400 });
+      const body = await req.text();
+      if (body.length > MAX_STATS_BYTES) return new Response("Too large", { status: 413 });
+      let data; try { data = JSON.parse(body); } catch (e) { return new Response("Bad JSON", { status: 400 }); }
+      if (!data || typeof data !== "object" || Array.isArray(data) || data.v !== 1) return new Response("Bad stats", { status: 400 });
+      const key = "d:" + dev;
+      if (!(await this.ctx.storage.get(key))) {
+        const n = (await this.ctx.storage.list({ prefix: "d:", limit: MAX_STATS_DEVICES })).size;
+        if (n >= MAX_STATS_DEVICES) return new Response("Too many phones on this code", { status: 409 });
+      }
+      await this.ctx.storage.put(key, data);
+      return json({ ok: true });
+    }
+    return new Response("Method not allowed", { status: 405 });
   }
 }

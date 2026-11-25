@@ -3,6 +3,7 @@
 import json, os, random, sys
 sys.path.insert(0, os.path.dirname(__file__))
 from clarity import score, hard_diphthong
+from lists3 import NATURE, BODY, CLOTHING, VEHICLES
 from lists import ANIMALS, FOODS, THINGS, PEOPLE, LANDMARKS, SAYINGS
 
 root = os.path.join(os.path.dirname(__file__), "..")
@@ -24,6 +25,7 @@ def items(s):
 base = {
     "Places": set(LANDMARKS.split("|")),
     "Sayings": set(SAYINGS.split("|")),
+    "Nature": set(NATURE.split("|")), "Body": set(BODY.split("|")), "Clothing": set(CLOTHING.split("|")), "Vehicles": set(VEHICLES.split("|")),
     "Animals": items(ANIMALS), "Food": items(FOODS), "Things": items(THINGS), "People": items(PEOPLE),
 }
 # Daily answers must be easy to follow when played backward (see clarity.py): 2 to 4 syllables,

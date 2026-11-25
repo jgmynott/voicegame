@@ -12,9 +12,9 @@
     "run_worker_first": true
   },
   "durable_objects": {
-    "bindings": [{ "name": "ROOM", "class_name": "Room" }]
+    "bindings": [{ "name": "ROOM", "class_name": "Room" }, { "name": "STATS", "class_name": "Stats" }]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }, { "tag": "v2", "new_sqlite_classes": ["Stats"] }],
   "ai": { "binding": "AI" },
   "observability": { "enabled": true },
   // Setting routes turns workers.dev off unless it is kept on explicitly.

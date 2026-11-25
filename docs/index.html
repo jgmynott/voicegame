@@ -245,6 +245,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .gtime{font-family:var(--f-d);font-size:1.6rem;font-variant-numeric:tabular-nums;color:var(--team)}
 .gtime.low{color:var(--bad);animation:throb .5s infinite}
 .small{font-size:.9rem;font-weight:500}
+.stcard{width:100%;box-sizing:border-box;text-align:left;gap:10px}
+.mrow{display:flex;flex-direction:column;gap:1px}.mrow span{color:var(--dim);font-size:.9rem}
+.srow{display:grid;grid-template-columns:minmax(0,7em) 1fr auto 2.8em;gap:8px;align-items:center;font-size:.9rem}
+.srow span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbar{height:10px;border-radius:999px;background:var(--surface);overflow:hidden}.sbar i{display:block;height:100%;background:var(--a);border-radius:999px}
+.srow em{font-style:normal;color:var(--dim);text-align:right}
+.scode{letter-spacing:.08em;white-space:nowrap}
 </style>
 </head><body>
 <canvas id="fx"></canvas>
@@ -429,7 +436,7 @@ const ICON = {
 const S = {
   screen:"title",
   teams:[{name:"Orange",color:"orange",players:["Player 1","Player 2"],score:0,turns:0},{name:"Ink",color:"ink",players:["Player 3","Player 4"],score:0,turns:0}],
-  mode:"points", source:"opponent", category:"Places", guesserPlays:2, speakerPlays:2, rounds:4, timer:0,
+  mode:"points", source:"opponent", category:"Places", diff:"normal", guesserPlays:2, speakerPlays:2, rounds:4, timer:0,
   round:1, turnTeam:0, used:new Set(), turn:null, history:[], menu:false, muted:false, micError:""
 };
 try{ const saved=JSON.parse(localStorage.getItem("rvg-setup")||"null"); if(saved){ delete saved.muted; Object.assign(S,saved); } }catch(e){}
@@ -442,10 +449,10 @@ S.teams.forEach((t,i)=>{ if(!t.color) t.color=i?"ink":"orange";
   if(!Array.isArray(t.players) || t.players.length<MIN_P) t.players=[`Player ${i*2+1}`,`Player ${i*2+2}`];
   t.players=t.players.slice(0,MAX_P); });
 if(![0,30,60].includes(S.timer)) S.timer=0;
-function saveSetup(){ try{ localStorage.setItem("rvg-setup",JSON.stringify({teams:S.teams.map(t=>({name:t.name,color:t.color,players:t.players,score:0,turns:0})),mode:S.mode,source:S.source,category:S.category,guesserPlays:S.guesserPlays,rounds:S.rounds,timer:S.timer})); }catch(e){} }
+function saveSetup(){ try{ localStorage.setItem("rvg-setup",JSON.stringify({teams:S.teams.map(t=>({name:t.name,color:t.color,players:t.players,score:0,turns:0})),mode:S.mode,source:S.source,category:S.category,diff:S.diff,guesserPlays:S.guesserPlays,rounds:S.rounds,timer:S.timer})); }catch(e){} }
 // Local team colors apply to the one-phone game screens only; online rooms keep the default pair.
 function applyTeamColors(){
-  const r=document.documentElement.style, on=!["online","title","daily","solo"].includes(S.screen);
+  const r=document.documentElement.style, on=!["online","title","daily","solo","stats"].includes(S.screen);
   if(on){ S.teams.forEach((t,i)=>{ const v=colorOf(t.color)[2]; r.setProperty(i?"--tB":"--tA",v); r.setProperty(i?"--tB-dk":"--tA-dk","#55583a"); }); }
   else ["--tA","--tB","--tA-dk","--tB-dk"].forEach(k=>r.removeProperty(k));
 }
@@ -465,11 +472,25 @@ const playerAt = (T,k) => T.players[k%T.players.length];
 const speaker = () => playerAt(team(),team().turns);
 const guesser = () => playerAt(team(),team().turns+1);
 const pts = () => S.mode==="points";
-const single = c => c==="Mixed"?"thing":c.toLowerCase().replace(/s$/,"");
+const SINGLE={Mixed:"thing","Movies & TV":"movie or show",Music:"music pick","Video Games":"video game",Nature:"nature word",Body:"body part",Clothing:"clothing item","Toys & Games":"toy or game",Holidays:"holiday or event",People:"person",Food:"food",Sayings:"saying",Brands:"brand",Sports:"sports pick"};
+const single = c => SINGLE[c] || c.toLowerCase().replace(/s$/,"");
 // Shuffled decks per category+level, remembered on this device so draws don't repeat until a deck runs out
 let DECKS={}; try{ DECKS=JSON.parse(localStorage.getItem("rvg-decks")||"{}"); }catch(e){}
 function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
-function deckList(cat,level){ return BANK[cat].filter(([w,n])=>level==null || n===level); }
+// Difficulty: Normal is the whole list. Easy and Hard are the clearest and least clear words in each
+// category when played backward (docs/levels.json, built by tools/levels.py). If that list hasn't
+// loaded, or a filter leaves nothing (say, Easy at 6 syllables), the Normal list is used.
+const DIFFS=[["easy","Easy"],["normal","Normal"],["hard","Hard"]];
+let LEVELS=null;
+fetch("levels.json").then(r=>r.ok?r.json():null).then(j=>{ if(j&&j.easy&&j.hard) LEVELS={easy:new Set(j.easy),hard:new Set(j.hard)}; }).catch(()=>{});
+const levelsReady=new Promise(res=>{ const t0=Date.now(); (function w(){ if(LEVELS||Date.now()-t0>4000) res(); else setTimeout(w,100); })(); });
+const okDiff=d=>DIFFS.some(([v])=>v===d)?d:"normal";
+function deckList(cat,level,diff){
+  const all=BANK[cat].filter(([w,n])=>level==null || n===level);
+  const set=LEVELS && diff && diff!=="normal" ? LEVELS[diff] : null;
+  if(!set) return all;
+  const f=all.filter(([w])=>set.has(w.toLowerCase())); return f.length?f:all;
+}
 function drawFrom(key,list){
   let d=DECKS[key]; if(!d || d.n!==list.length || d.pos>=list.length) d=DECKS[key]={seed:(Math.random()*2**31)|0,pos:0,n:list.length};
   const r=rng(d.seed), order=list.map((_,i)=>i);
@@ -477,9 +498,10 @@ function drawFrom(key,list){
   const item=list[order[d.pos++]]; try{ localStorage.setItem("rvg-decks",JSON.stringify(DECKS)); }catch(e){}
   return item;
 }
-function drawWord(cat,level){
-  let list=deckList(cat,level), key=cat+"|"+(level??"any"), fellBack=false;
-  if(!list.length){ list=CATS.flatMap(c=>deckList(c,level)); key="all|"+level; fellBack=true; }
+function drawWord(cat,level,diff=S.diff){
+  diff=okDiff(diff); const dk=diff==="normal"?"":"|"+diff;
+  let list=deckList(cat,level,diff), key=cat+"|"+(level??"any")+dk, fellBack=false;
+  if(!list.length){ list=CATS.flatMap(c=>deckList(c,level,diff)); key="all|"+level+dk; fellBack=true; }
   const [w,n]=drawFrom(key,list); return {word:w,syl:n,fellBack,drawn:true};
 }
 // words.json is fetched as soon as the script runs. The service worker serves it from cache when it can.
@@ -610,6 +632,7 @@ const $=id=>document.getElementById(id);
 function topbar(){
   if(S.screen==="online") return onlineTopbar();
   if(S.screen==="solo") return `<div class="bar">${logoHTML()}<div class="chip">Free play</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  if(S.screen==="stats") return `<div class="bar">${logoHTML()}<div class="chip">Stats</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
   if(S.screen==="daily") return `<div class="bar">${logoHTML()}<div class="chip">Daily${D.info?" #"+D.info.n:""}</div><button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
   const inGame = !["title","setup"].includes(S.screen);
   const sc = inGame && pts() ? `<div class="scores"><span class="s sa ${S.turnTeam===0&&S.screen!=="final"?"on":""}" id="sc0">${S.teams[0].score}</span><span class="dim">:</span><span class="s sb ${S.turnTeam===1&&S.screen!=="final"?"on":""}" id="sc1">${S.teams[1].score}</span></div>`
@@ -618,7 +641,7 @@ function topbar(){
 }
 let armed=""; // "quit" or "restart" while waiting for the second tap
 // "Free" screens can be left at any time. Leaving an active game asks first (menu, tap twice to quit).
-const freeScreen = () => ["title","setup","daily","solo"].includes(S.screen) || (S.screen==="online" && !O.code);
+const freeScreen = () => ["title","setup","daily","solo","stats"].includes(S.screen) || (S.screen==="online" && !O.code);
 const logoHTML = () => `<button class="logo" id="homeBtn" aria-label="${S.screen==="title"?"BackSlang":"Back to the home screen"}">${S.screen==="title"?"":`<span class="bk" aria-hidden="true">‹</span>`}<span>Back</span><span class="w">Slang</span></button>`;
 function helpHTML(){
   if(S.screen==="daily") return `<ul><li>One word a day, the same for everyone. A new one comes at midnight New York time.</li>
@@ -627,6 +650,9 @@ function helpHTML(){
       <li>You get 5 guesses. After each miss you get a hint: syllables, then the number of words, then first letters, then more letters.</li>
       <li>Each wrong guess gets a tag for how close your spelling was: Not close, Getting warmer, Close or Very close.</li>
       <li>For answers with more than one word, each word you typed is colored: green is a right word in the right place, yellow a right word in the wrong place, peach nearly a right word.</li></ul>`;
+  if(S.screen==="stats") return `<ul><li>Every word you finish in any mode counts: Daily, Free play, games on one phone, and online games where you are the Guesser.</li>
+      <li>Accuracy is words guessed out of words played. Skipped or revealed words count as misses.</li>
+      <li>Your stats are saved on this phone and backed up under your stats code. Enter the code on another phone to combine them.</li></ul>`;
   if(S.screen==="solo") return `<ul><li>A random word from the list, played backward.</li>
       <li>Say it back and flip your copy to hear it forward.</li><li>Guess as many times as you like. Hints and Reveal are there if you're stuck.</li></ul>`;
   return `<ul>
@@ -775,7 +801,7 @@ function home(){
 let KEEP_AUDIO=false, lastKey="";
 function render(){
   if(!KEEP_AUDIO) stopPlay();
-  document.body.dataset.team = S.screen==="online" ? String(onlineTeamColor()) : ["title","setup","daily","solo"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
+  document.body.dataset.team = S.screen==="online" ? String(onlineTeamColor()) : ["title","setup","daily","solo","stats"].includes(S.screen) ? "0" : String(S.screen==="opp"?1-S.turnTeam:["reveal","drum"].includes(S.screen)?S.turn.team:S.turnTeam);
   applyTeamColors();
   const v=VIEWS[S.screen]();
   // Only animate the screen in when it is a new screen. Same-screen updates swap in place.
@@ -820,14 +846,15 @@ const VIEWS = {
     return { cls:"center", html:`<div class="title"><h1 class="huge">BackSlang</h1><h1 class="huge mirror" aria-hidden="true">BackSlang</h1></div>
       <span class="chip" id="wcount" style="${WORD_COUNT?"":"visibility:hidden"}">${WORD_COUNT?WORD_COUNT.toLocaleString():"0,000"} words and phrases</span><p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
       ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKSLANG</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}
-      <div class="links"><button class="link" id="howBtn">How to play</button><button class="link" id="setBtn">Settings</button><button class="link" id="installLink" ${installEvt&&!standalone()?"":"hidden"}>Install app</button></div>`,
+      <div class="links"><button class="link" id="stats">📊 Your stats</button><button class="link" id="howBtn">How to play</button><button class="link" id="setBtn">Settings</button><button class="link" id="installLink" ${installEvt&&!standalone()?"":"hidden"}>Install app</button></div>`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
         if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); ensureMic(); openDaily(); };
         if($("solo")) $("solo").onclick=()=>{ ac(); SFX.go(); ensureMic(); openSolo(); };
         if($("playOnline")) $("playOnline").onclick=()=>{ ac(); SFX.go(); O.err=""; go("online"); };
         $("howBtn").onclick=()=>{ SFX.tap(); openMenu("tour"); };
         $("setBtn").onclick=()=>{ SFX.tap(); openMenu("settings"); };
-        $("installLink").onclick=()=>{ if(installEvt) doInstall(); else openMenu("settings"); }; } };
+        $("installLink").onclick=()=>{ if(installEvt) doInstall(); else openMenu("settings"); };
+        $("stats").onclick=()=>{ ac(); openStats(); }; } };
   },
   setup(){
     const T=S.teams;
@@ -843,6 +870,7 @@ const VIEWS = {
         <span class="lbl">Mode</span>${seg("mode",[["points","🏆 Points"],["casual","🎉 Casual"]],S.mode)}
         <span class="lbl">Who picks the word</span>${seg("source",[["opponent","Other team"],["random","Random"]],S.source)}
         <span class="lbl">Category</span>${CATS.length?seg("cat",[...CATS.map(c=>[c,c]),["Mixed","Mixed"]],S.category):`<div class="dots" style="color:var(--a);justify-content:flex-start"><i></i><i></i><i></i></div>`}
+        <span class="lbl">Difficulty</span>${seg("diff",DIFFS,okDiff(S.diff))}
         <span class="lbl">Guesser hears the clip</span>${seg("gp",[[1,"1×"],[2,"2×"],[0,"∞"]],S.guesserPlays)}
         <span class="lbl">Guess timer</span>${seg("timer",[[0,"Off"],[30,"30 sec"],[60,"60 sec"]],S.timer)}
         ${pts()?`<span class="lbl">Rounds</span>${seg("rounds",[[2,"2"],[4,"4"],[6,"6"],[8,"8"]],S.rounds)}`:""}
@@ -851,7 +879,7 @@ const VIEWS = {
       <button class="btn" id="start">LET'S GO</button><button class="link" id="back">Back</button>`,
       bind(){
         const keep=keepSetup;
-        bindSeg("mode",v=>{keep();S.mode=v;}); bindSeg("source",v=>{keep();S.source=v;}); if($("cat")) bindSeg("cat",v=>{keep();S.category=v;});
+        bindSeg("mode",v=>{keep();S.mode=v;}); bindSeg("source",v=>{keep();S.source=v;}); if($("cat")) bindSeg("cat",v=>{keep();S.category=v;}); bindSeg("diff",v=>{keep();S.diff=v;});
         bindSeg("gp",v=>{keep();S.guesserPlays=+v;}); if($("rounds")) bindSeg("rounds",v=>{keep();S.rounds=+v;});
         bindSeg("timer",v=>{keep();S.timer=+v;});
         document.querySelectorAll(".swatch").forEach(b=>b.onclick=()=>{ keep(); const t=S.teams[+b.dataset.t], was=colorOf(t.color)[1];
@@ -862,7 +890,7 @@ const VIEWS = {
           S.teams[i].players.splice(j,1); SFX.tap(); render(); });
         $("start").onclick=async()=>{ keep(); saveSetup(); ac();
           if(!wordsLoaded){ const b=$("start"); b.disabled=true; b.textContent="LOADING WORDS…"; await wordsReady; if(S.screen!=="setup") return; }
-          S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[];
+          S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[]; S.counted=false;
           keepAwake(true); newTurn(); go("splash","slam"); };
         $("back").onclick=()=>{ keep(); saveSetup(); home(); };
       } };
@@ -982,14 +1010,15 @@ const VIEWS = {
       bind(){
         $("c1").onclick=()=>play(t.orig); $("c2").onclick=()=>play(t.origRev); $("c3").onclick=()=>play(t.copy); $("c4").onclick=()=>play(t.copyFlip);
         if(pts()) $("flip").onclick=()=>{ const before=S.teams[t.team].score; applyScore(-1); t.correct=!t.correct; applyScore(1); render(); countUp($("sc"+t.team),before,S.teams[t.team].score); if(t.correct){SFX.win();confetti();} else SFX.lose(); };
-        else { $("gotIt").onclick=()=>{ t.correct=true; t.log.ok=true; SFX.win(); confetti(80); render(); }; $("missed").onclick=()=>{ t.correct=false; t.log.ok=false; SFX.lose(); render(); }; $("end").onclick=()=>go("final","fanfare"); }
-        $("next").onclick=()=>{ if(last){ go("final","fanfare"); setTimeout(()=>confetti(220),200); } else { newTurn(); go("splash","slam"); } };
+        else { $("gotIt").onclick=()=>{ t.correct=true; t.log.ok=true; SFX.win(); confetti(80); render(); }; $("missed").onclick=()=>{ t.correct=false; t.log.ok=false; SFX.lose(); render(); }; $("end").onclick=()=>{ teamStat(t); go("final","fanfare"); }; }
+        $("next").onclick=()=>{ teamStat(t); if(last){ go("final","fanfare"); setTimeout(()=>confetti(220),200); } else { newTurn(); go("splash","slam"); } };
       } };
   },
   final(){
     const [A,B]=S.teams, tie=A.score===B.score, w=A.score>B.score?A:B, wi=A.score>B.score?0:1;
     const tally=i=>S.history.filter(h=>h.team===i && h.ok).length;
     if(pts() && !tie) document.body.dataset.team=String(wi);
+    if(!S.counted){ S.counted=true; statGame("team"); }
     return { cls:"center", html:`<div class="splash"><div style="font-size:4rem;line-height:1">🏆</div>
       <h1 class="huge">${pts()?(tie?"IT'S A TIE":esc(w.name)+" WINS"):"GG!"}</h1>
       <p class="d" style="font-size:1.6rem">${pts()?`${A.score} : ${B.score}`:`${esc(A.name)} ${tally(0)} · ${esc(B.name)} ${tally(1)}`}</p></div>
@@ -997,7 +1026,7 @@ const VIEWS = {
       <div class="card" style="width:100%;box-sizing:border-box;text-align:left"><span class="lbl">Every turn</span>
       ${S.history.map(h=>`<p>${esc(S.teams[h.team].name)} · <b>${esc(h.word)}</b> <span class="dim">${esc(h.speaker||"")} → ${esc(h.guesser||"")}</span> ${pts()?`<span style="color:${h.d>0?"var(--good)":"var(--bad)"}">${h.d>0?"+":"−"}${Math.abs(h.d)}</span>`:(h.ok===true?"✅":h.ok===false?"❌":"")}</p>`).join("")||`<p class="dim">No turns played.</p>`}</div>`,
       bind(){
-        $("again").onclick=()=>{ S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[]; newTurn(); go("splash","slam"); };
+        $("again").onclick=()=>{ S.teams.forEach(t=>{t.score=0;t.turns=0;}); S.round=1; S.turnTeam=0; S.history=[]; S.counted=false; newTurn(); go("splash","slam"); };
         $("newg").onclick=()=>go("setup","tap");
         $("shareG").onclick=()=>shareOut(gameShareText(S.teams.map(t=>t.name),S.teams.map(t=>t.score),S.history,pts(),S.rounds),$("shareG"));
       } };
@@ -1027,6 +1056,9 @@ async function shareOut(text,btn){
   try{ if(navigator.share){ await navigator.share({text}); return; } }catch(e){ return; }
   try{ await navigator.clipboard.writeText(text); if(btn){ const o=btn.textContent; btn.textContent="Copied!"; setTimeout(()=>{ if(btn.isConnected) btn.textContent=o; },1600); } }catch(e){}
 }
+// Pass one phone: a turn counts once its result is settled (the reveal screen is left). Casual turns
+// nobody marked as got or missed are not counted.
+function teamStat(t){ if(t.counted || t.correct==null || !t.word) return; t.counted=true; statWord("team",t.correct,t.cat,t.drawn?diffKey(okDiff(S.diff)):null); }
 function t_hint(){ return `Category: ${S.turn.cat}${pts()?` · worth ${pointsFor(S.turn.level)}`:""}`; }
 function applyScore(sign){ const t=S.turn, d=t.correct?pointsFor(t.level):-penaltyFor(t.level); S.teams[t.team].score+=sign*d; if(sign>0) t.log.d=d; }
 function finish(correct){
@@ -1100,6 +1132,7 @@ async function dailyGuess(text,giveup){
     st.hints=j.hints||st.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
     if(j.over){ st.over=true; st.won=j.correct; st.word=j.word; st.gaveUp=!!giveup;
       const s=dstats(); s.played++; if(j.correct){ s.wins++; s.streak = s.lastWin===D.info.n-1 ? s.streak+1 : 1; s.best=Math.max(s.best,s.streak); s.lastWin=D.info.n; } else s.streak=0; s.lastPlayed=D.info.n; dsave(DSTATS,s);
+      statWord("daily",j.correct,D.info.cat,null);
       if(j.correct){ SFX.win(); confetti(); buzz([40,60,40]); } else { SFX.lose(); buzz(200); }
     } else { SFX.lose(); buzz(80); }
     dsave(DKEY,st); D.draft="";
@@ -1143,13 +1176,14 @@ VIEWS.daily = function(){
       <div class="dstats"><div><b>${s.played}</b>Played</div><div><b>${s.played?Math.round(100*s.wins/s.played):0}%</b>Won</div><div><b>${s.streak}</b>Streak</div><div><b>${s.best}</b>Best</div></div>
       <button class="btn" id="share">${D.copied?"COPIED!":"SHARE RESULT"}</button>
       <p class="dim">Next word in ${untilNext()}</p>
-      <button class="link" id="home">Back to menu</button>`,
+      <button class="link" id="allStats">All your stats</button><button class="link" id="home">Back to menu</button>`,
       bind(){
         $("fwd").onclick=()=>{ const s=atSpeed("fwd"); if(s) play(s); };
         $("pl").onclick=()=>{ const s=atSpeed("rev"); if(s) play(s); };
         $("share").onclick=async()=>{ const t=shareText(st);
           try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(t); D.copied=true; render(); setTimeout(()=>{ D.copied=false; if(S.screen==="daily") render(); },1600); }catch(e){} };
+        $("allStats").onclick=()=>openStats();
         $("home").onclick=()=>go("title");
       } };
   }
@@ -1187,20 +1221,15 @@ function bindSpeed(){ const el=$("speed"); if(!el) return; el.querySelectorAll("
 
 // ---------- Free play: one player, endless words, AI voice ----------
 const P = { cat:(()=>{ try{ return localStorage.getItem("bw-solo-cat")||"Mixed"; }catch(e){ return "Mixed"; } })(),
+  diff:(()=>{ try{ return okDiff(localStorage.getItem("bw-solo-diff")||"easy"); }catch(e){ return "easy"; } })(),
   cur:null, next:null, guesses:[], hints:0, done:false, won:false, draft:"", err:"", loading:false, local:{}, solved:0, played:0, run:0 };
 const SOLO_CACHE = new WeakMap();
 function soloSpeed(buf){ if(!buf) return null; let m=SOLO_CACHE.get(buf); if(!m){ m={}; SOLO_CACHE.set(buf,m); } if(!m[D.speed]) m[D.speed]=stretchBuf(buf,D.speed); return m[D.speed]; }
 
-// Free play only draws words that stay clear when the AI voice plays them backward (docs/clear.json,
-// built by tools/freeplay.py). Until that list loads, or if it fails, any word can come up.
-let SOLO_OK=null;
-fetch("clear.json").then(r=>r.ok?r.json():null).then(a=>{ if(Array.isArray(a)&&a.length) SOLO_OK=new Set(a); }).catch(()=>{});
 function soloPick(){
   const cat = P.cat==="Mixed" ? CATS[Math.floor(Math.random()*CATS.length)] : P.cat;
-  const list = SOLO_OK ? deckList(cat,null).filter(([w])=>SOLO_OK.has(w.toLowerCase())) : [];
-  if(list.length){ const [word,syl]=drawFrom("solo|"+cat,list); return { word, syl, cat }; }
-  const d = drawWord(cat,null);
-  return { word:d.word, syl:d.syl, cat };
+  const d = drawWord(cat,null,P.diff);
+  return { word:d.word, syl:d.syl, cat, diff:P.diff };
 }
 async function soloLoad(item){
   const r=await fetch("/api/say?w="+encodeURIComponent(item.word)); if(!r.ok) throw new Error("The voice didn't load. Tap Next word to try another.");
@@ -1211,17 +1240,18 @@ async function soloLoad(item){
 }
 // The next word is fetched while the current one is played. Its promise is kept, so tapping Next or Skip
 // while it is still downloading waits for that download instead of starting a second one.
-function soloPrefetch(){ const n=soloPick(), cat=P.cat; P.next={cat,p:soloLoad(n)}; P.next.p.catch(()=>{ if(P.next && P.next.cat===cat) P.next=null; }); }
+function soloPrefetch(){ const n=soloPick(), cat=P.cat+"|"+P.diff; P.next={cat,p:soloLoad(n)}; P.next.p.catch(()=>{ if(P.next && P.next.cat===cat) P.next=null; }); }
 let soloSeq=0;
 async function soloNext(){
   const seq=++soloSeq;
-  const pre = P.next && P.next.cat===P.cat ? P.next.p : null; P.next=null;
+  const pre = P.next && P.next.cat===P.cat+"|"+P.diff ? P.next.p : null; P.next=null;
   let item=null, err="";
   P.loading=true;
   // Show the loading screen only if the word is not ready within a moment, so a prefetched word appears without a flash.
   const slow=setTimeout(()=>{ if(P.loading && S.screen==="solo") render(); },120);
   try{
     if(!wordsLoaded) await wordsReady;
+    if(!LEVELS && P.diff!=="normal") await levelsReady;
     item = pre ? await pre.catch(()=>null) : null;
     if(!item) item=await soloLoad(soloPick());
   }catch(e){ err=e.message; }
@@ -1256,14 +1286,16 @@ function soloGuess(){
   const t=P.draft.trim(); if(!t || P.done || P.loading || !P.cur) return;
   const ok=judge(t,P.cur.word);
   P.guesses.push({ text:t, ok, fb: ok?null:soloFeedback(t,P.cur.word) }); P.draft="";
-  if(ok){ P.done=true; P.won=true; P.solved++; P.played++; P.run++; SFX.win(); confetti(); buzz([40,60,40]); }
+  if(ok){ P.done=true; P.won=true; P.solved++; P.played++; P.run++; soloStat(true); SFX.win(); confetti(); buzz([40,60,40]); }
   else { SFX.lose(); buzz(80); }
   render();
 }
-function soloGiveUp(){ if(P.done || P.loading) return; P.done=true; P.won=false; P.played++; P.run=0; SFX.lose(); render(); }
+function soloGiveUp(){ if(P.done || P.loading) return; P.done=true; P.won=false; P.played++; P.run=0; soloStat(false); SFX.lose(); render(); }
+function soloStat(ok){ if(P.cur) statWord("solo",ok,P.cur.cat,diffKey(P.cur.diff||P.diff)); }
 
 VIEWS.solo = function(){
   const catSeg = `<div class="seg speed" id="scat">${[...CATS,"Mixed"].map(c=>`<button type="button" role="radio" aria-checked="${c===P.cat}" data-v="${esc(c)}">${esc(c)}</button>`).join("")}</div>`;
+  const diffSeg = `<div class="seg speed" id="sdiff">${DIFFS.map(([v,l])=>`<button type="button" role="radio" aria-checked="${v===P.diff}" data-v="${v}">${l}</button>`).join("")}</div>`;
   const tally = `<p class="dim" style="margin:0">Solved ${P.solved} of ${P.played}${P.run>1?` · ${P.run} in a row`:""}</p>`;
   if(P.loading || !P.cur) return { cls:"center", key:"load", html:`<span class="kicker">Free play</span>${P.err?`<p class="err">${esc(P.err)}</p><button class="btn" id="nx">NEXT WORD</button>`:`<h2 class="big-t">Getting a word…</h2><div class="dots"><i></i><i></i><i></i></div>`}`,
     bind(){ if($("nx")) $("nx").onclick=()=>soloNext(); } };
@@ -1275,12 +1307,12 @@ VIEWS.solo = function(){
       <div class="lrow"><button class="play sm" id="fwd" aria-label="Play forward">${ICON.play}</button><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button></div>
       ${tally}
       <button class="btn" id="nx">NEXT WORD</button>
-      <button class="link" id="home">Back to menu</button>`,
-    bind(){ $("fwd").onclick=()=>play(soloSpeed(c.fwd)); $("pl").onclick=()=>play(soloSpeed(c.rev)); $("nx").onclick=()=>{ if(P.loading) return; SFX.whoosh(); soloNext(); }; $("home").onclick=()=>go("title"); } };
+      <div class="row" style="justify-content:center"><button class="link" id="allStats">All your stats</button><button class="link" id="home">Back to menu</button></div>`,
+    bind(){ $("fwd").onclick=()=>play(soloSpeed(c.fwd)); $("pl").onclick=()=>play(soloSpeed(c.rev)); $("nx").onclick=()=>{ if(P.loading) return; SFX.whoosh(); soloNext(); }; $("allStats").onclick=()=>openStats(); $("home").onclick=()=>go("title"); } };
   const hints=soloHints().map(hintHTML).join("");
   const legend=fbKey(misses);
   return { cls:"center", key:"play|"+c.word, html:`<span class="kicker">Free play · ${esc(c.cat)}</span>
-    ${catSeg}
+    ${catSeg}${diffSeg}
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">A random word, played backward. Listen as much as you want.</p></div>
     ${speedSeg()}
     <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${P.local.mine?"":"disabled"}>🔄 Flip mine</button></div>
@@ -1294,6 +1326,8 @@ VIEWS.solo = function(){
       $("speed").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed2",D.speed); }catch(e){} render(); play(soloSpeed(c.rev)); });
       $("scat").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); P.cat=b.dataset.v; try{ localStorage.setItem("bw-solo-cat",P.cat); }catch(e){}
         $("scat").querySelectorAll("button").forEach(x=>x.setAttribute("aria-checked",String(x===b))); stopPlay(); P.next=null; soloNext(); });
+      $("sdiff").querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); P.diff=b.dataset.v; try{ localStorage.setItem("bw-solo-diff",P.diff); }catch(e){}
+        $("sdiff").querySelectorAll("button").forEach(x=>x.setAttribute("aria-checked",String(x===b))); stopPlay(); P.next=null; soloNext(); });
       const r=$("rec"); r.onclick=()=>recordInto("rec",r,buf=>{ P.local.mine=reverseBuf(buf); render(); });
       if(P.local.mine) $("flip").onclick=()=>{ if(activeRec) return; play(P.local.mine); };
       const g=$("dg"); g.oninput=()=>P.draft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("go").click(); };
@@ -1301,9 +1335,131 @@ VIEWS.solo = function(){
       $("hint").onclick=()=>{ SFX.tap(); P.hints=Math.min(4,P.hints+1); render(); };
       $("give").onclick=()=>{ if(!P.revealArmed){ P.revealArmed=true; SFX.tap(); $("give").textContent="Sure?"; clearTimeout(P.revT); P.revT=setTimeout(()=>{ P.revealArmed=false; const x=$("give"); if(x) x.textContent="Reveal"; },3000); return; }
         clearTimeout(P.revT); P.revealArmed=false; soloGiveUp(); };
-      $("skip").onclick=()=>{ if(P.loading) return; SFX.whoosh(); P.played++; P.run=0; soloNext(); };
+      $("skip").onclick=()=>{ if(P.loading) return; SFX.whoosh(); P.played++; P.run=0; soloStat(false); soloNext(); };
     } };
 };
+
+// ================= All-time stats =================
+// Every finished word in every mode is counted on this phone (localStorage "bs-stats"). Counters are kept
+// summable, so the copy on each phone can be backed up to the server under one stats code and added up:
+// clearing the browser or moving to a new phone only needs that code. Daily keeps its own streak in
+// "bw-daily-stats" as before; it is read here, never rewritten.
+const STK="bs-stats", ST_OTHERS="bs-stats-others", ST_CODE="bs-code", ST_DEV="bs-dev", ST_DIRTY="bs-dirty";
+const blankStats = () => ({ v:1, words:0, got:0, streak:0, best:0, at:0,
+  modes:{ daily:{p:0,w:0}, solo:{p:0,w:0}, team:{g:0,p:0,w:0}, online:{g:0,p:0,w:0,sp:0,sw:0} }, cat:{}, diff:{} });
+function loadStats(){
+  const s=dload(STK,null);
+  if(s && s.v===1) return s;
+  // First run: start from the Daily results this phone already has.
+  const b=blankStats(), d=dstats();
+  b.modes.daily.p=d.played|0; b.modes.daily.w=d.wins|0; b.words=b.modes.daily.p; b.got=b.modes.daily.w;
+  b.best=d.best|0; b.streak=d.streak|0; b.at=b.words?Date.now():0;
+  dsave(STK,b); return b;
+}
+let ST=loadStats();
+const randCode = n => { const A="BCDFGHJKLMNPQRSTVWXZ23456789", r=crypto.getRandomValues(new Uint8Array(n)); return Array.from(r,x=>A[x%A.length]).join(""); };
+const stCode = () => { let c=""; try{ c=localStorage.getItem(ST_CODE)||""; }catch(e){} if(!c){ c=randCode(10); try{ localStorage.setItem(ST_CODE,c); }catch(e){} } return c; };
+const stDev = () => { let d=""; try{ d=localStorage.getItem(ST_DEV)||""; }catch(e){} if(!d){ d=randCode(12); try{ localStorage.setItem(ST_DEV,d); }catch(e){} } return d; };
+const fmtCode = c => c.slice(0,5)+"-"+c.slice(5);
+const DIFF_LABEL = Object.fromEntries(DIFFS);
+// Difficulty of a word drawn from the list. Words a player typed in, and Daily words, have none and
+// are left out of the difficulty breakdown.
+const diffKey = d => typeof d==="string" && DIFF_LABEL[d] ? d : null;
+const bump = (o,k,ok) => { const r=o[k]||(o[k]={p:0,w:0}); r.p++; if(ok) r.w++; };
+// One finished word that this player guessed (or tried to).
+function statWord(mode,ok,cat,diff){
+  ok=!!ok; ST.words++; if(ok) ST.got++;
+  ST.streak = ok ? ST.streak+1 : 0; ST.best=Math.max(ST.best,ST.streak);
+  bump(ST.modes,mode,ok); if(cat) bump(ST.cat,cat,ok); if(diff) bump(ST.diff,diff,ok);
+  statSave();
+}
+function statGame(mode){ ST.modes[mode].g=(ST.modes[mode].g|0)+1; statSave(); }
+function statSpoke(ok){ const m=ST.modes.online; m.sp++; if(ok) m.sw++; statSave(); }
+function statSave(){ ST.at=Date.now(); dsave(STK,ST); try{ localStorage.setItem(ST_DIRTY,"1"); }catch(e){} statPushSoon(); }
+
+// ---- backup: each phone stores its own copy under the shared code; the server never adds anything up ----
+let stPushT=0, stSync={ state:"", err:"", draft:"" };
+function statPushSoon(){ clearTimeout(stPushT); stPushT=setTimeout(statPush,1500); }
+async function statPush(){
+  if(!ONLINE_OK) return;
+  let dirty=false; try{ dirty=localStorage.getItem(ST_DIRTY)==="1"; }catch(e){}
+  if(!dirty || !ST.words && !ST.modes.online.sp) return;
+  try{
+    const r=await fetch(`/api/stats/${stCode()}?dev=${stDev()}`,{method:"PUT",keepalive:true,headers:{"content-type":"application/json"},body:JSON.stringify(ST)});
+    if(r.ok){ try{ localStorage.removeItem(ST_DIRTY); }catch(e){} stSync.state="saved"; }
+  }catch(e){}
+}
+async function statPull(code){
+  const r=await fetch(`/api/stats/${code}`,{cache:"no-store"}); if(!r.ok) throw new Error(r.status===404?"none":"net");
+  const j=await r.json(), dev=stDev(), others={};
+  for(const [k,v] of Object.entries(j.devices||{})) if(k!==dev && v && v.v===1) others[k]=v;
+  return { others, any:Object.keys(j.devices||{}).length>0 };
+}
+async function statRefresh(){
+  if(!ONLINE_OK) return;
+  try{ const {others}=await statPull(stCode()), was=JSON.stringify(dload(ST_OTHERS,{}));
+    dsave(ST_OTHERS,others); if(S.screen==="stats" && JSON.stringify(others)!==was) render(); }catch(e){}
+}
+async function statRestore(raw){
+  const code=raw.toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(code.length!==10){ stSync.err="Stats codes are 10 letters and numbers."; render(); return; }
+  if(code===stCode()){ stSync.err="That's already this phone's code."; render(); return; }
+  stSync.state="restoring"; stSync.err=""; render();
+  try{
+    const {others,any}=await statPull(code);
+    if(!any){ stSync.err="No stats saved under that code."; stSync.state=""; render(); return; }
+    // This phone joins that code: its own counts are kept and added to the restored ones.
+    try{ localStorage.setItem(ST_CODE,code); localStorage.setItem(ST_DIRTY,"1"); }catch(e){}
+    dsave(ST_OTHERS,others); stSync.state="restored"; stSync.draft=""; statPush();
+  }catch(e){ stSync.err=e.message==="none"?"No stats saved under that code.":"Couldn't reach the server. Try again."; stSync.state=""; }
+  render();
+}
+// This phone plus every other phone on the same code. Counts add up; the best streak is the highest,
+// and the current streak comes from whichever phone played last.
+function statsAll(){
+  const list=[ST,...Object.values(dload(ST_OTHERS,{}))].filter(x=>x&&x.v===1);
+  const add=(a,b)=>{ for(const [k,v] of Object.entries(b||{})){ if(v && typeof v==="object") add(a[k]||(a[k]={}),v); else if(typeof v==="number") a[k]=(a[k]||0)+(v>0?v:0); } return a; };
+  const out=blankStats(); list.forEach(s=>{ add(out.modes,s.modes); add(out.cat,s.cat); add(out.diff,s.diff); out.words+=s.words|0; out.got+=s.got|0; });
+  const last=list.reduce((a,s)=>(s.at||0)>(a.at||0)?s:a,list[0]);
+  out.streak=last.streak|0; out.best=Math.max(...list.map(s=>s.best|0)); out.phones=list.length;
+  return out;
+}
+const pct = (w,p) => p ? Math.round(100*w/p)+"%" : "–";
+
+VIEWS.stats = function(){
+  const A=statsAll(), M=A.modes, d=dstats(), code=stCode();
+  const bars = (obj,label) => Object.entries(obj).filter(([,r])=>r.p).sort((x,y)=>y[1].p-x[1].p).map(([k,r])=>
+    `<div class="srow"><span>${esc(label?label(k):k)}</span><span class="sbar"><i style="width:${Math.round(100*r.w/r.p)}%"></i></span><b>${r.w}/${r.p}</b><em>${pct(r.w,r.p)}</em></div>`).join("");
+  const diffOrder = Object.fromEntries(DIFFS.map(([k])=>k).filter(k=>A.diff[k]&&A.diff[k].p).map(k=>[k,A.diff[k]]));
+  const mode = (name,n,line) => `<div class="mrow"><b>${name}</b><span>${n?line:"Not played yet"}</span></div>`;
+  const cats=bars(A.cat), diffs=Object.keys(diffOrder).length?bars(diffOrder,k=>DIFF_LABEL[k]):"";
+  const empty=!A.words && !M.online.sp && !M.team.g && !M.online.g;
+  return { key:"s", html:`<h2 class="big-t">Your stats</h2>
+    ${empty?`<p class="dim">Nothing yet. Play any mode and every word you guess is counted here.</p>`:""}
+    <div class="dstats"><div><b>${A.words}</b>Words played</div><div><b>${A.got}</b>Guessed</div><div><b>${pct(A.got,A.words)}</b>Accuracy</div><div><b>${A.best}</b>Best streak</div></div>
+    <p class="dim" style="margin:0">Current streak: ${A.streak} word${A.streak===1?"":"s"} in a row</p>
+    <div class="card stcard"><span class="lbl">By mode</span>
+      ${mode("Daily",M.daily.p,`${M.daily.w} of ${M.daily.p} won · ${d.streak} day streak · best ${d.best}`)}
+      ${mode("Free play",M.solo.p,`${M.solo.w} of ${M.solo.p} guessed · ${pct(M.solo.w,M.solo.p)}`)}
+      ${mode("Pass one phone",M.team.g+M.team.p,`${M.team.g} game${M.team.g===1?"":"s"} · ${M.team.w} of ${M.team.p} words guessed`)}
+      ${mode("Online",M.online.g+M.online.p+M.online.sp,`${M.online.g} game${M.online.g===1?"":"s"} · guessed ${M.online.w} of ${M.online.p} · your words got across ${M.online.sw} of ${M.online.sp}`)}</div>
+    ${cats?`<div class="card stcard"><span class="lbl">By category</span>${cats}</div>`:""}
+    ${diffs?`<div class="card stcard"><span class="lbl">By difficulty</span>${diffs}</div>`:""}
+    ${ONLINE_OK?`<div class="card stcard"><span class="lbl">Keep your stats</span>
+      <p style="margin:0">Your stats code is <b class="scode">${fmtCode(code)}</b>. Enter it on a new phone, or after clearing your browser, to bring your stats back.${A.phones>1?` It covers ${A.phones} phones.`:""}</p>
+      <button class="btn ghost" id="copyCode">${stSync.copied?"Copied":"Copy code"}</button>
+      <div class="row" style="gap:8px"><input class="inp sm" id="rcode" maxlength="11" autocomplete="off" autocapitalize="characters" placeholder="Enter a code" value="${esc(stSync.draft)}" style="text-transform:uppercase"><button class="btn team" id="restore" style="flex:0 0 34%" ${stSync.state==="restoring"?"disabled":""}>${stSync.state==="restoring"?"…":"RESTORE"}</button></div>
+      ${stSync.err?`<p class="err" style="margin:0">${esc(stSync.err)}</p>`:stSync.state==="restored"?`<p class="dim" style="margin:0">Restored. This phone's stats are now added to that code.</p>`:""}</div>`:""}
+    <button class="link" id="home">Back to menu</button>`,
+    bind(){
+      $("home").onclick=()=>go("title");
+      if(!ONLINE_OK) return;
+      $("copyCode").onclick=async()=>{ try{ await navigator.clipboard.writeText(fmtCode(code)); stSync.copied=true; render(); setTimeout(()=>{ stSync.copied=false; if(S.screen==="stats") render(); },1600); }catch(e){} };
+      const i=$("rcode"); i.oninput=()=>stSync.draft=i.value; i.onkeydown=e=>{ if(e.key==="Enter") $("restore").click(); };
+      $("restore").onclick=()=>{ if(!i.value.trim()){ i.focus(); return; } statRestore(i.value); };
+    } };
+};
+function openStats(){ stSync.err=""; if(stSync.state!=="restoring") stSync.state=""; go("stats","whoosh"); statPush(); statRefresh(); }
 
 // ================= Online mode: every player on their own phone =================
 const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
@@ -1387,6 +1543,12 @@ function onState(prev){
     if(s.phase==="guess" && t.guesserId===O.pid) buzz([40,40,40]);
     if(s.phase==="final"){ SFX.fanfare(); setTimeout(()=>confetti(220),200); }
   }
+  // Stats: a turn counts for this player when the room moves on from its reveal (so a re-marked result is final).
+  if(prev && prev.phase==="reveal" && prev.turn && (s.phase!=="reveal" || !t || t.n!==prev.turn.n)){
+    const pt=prev.turn, dk=pt.drawn?diffKey(okDiff(prev.settings&&prev.settings.difficulty)):null;
+    if(pt.correct!=null && pt.word){ if(pt.guesserId===O.pid) statWord("online",pt.correct,pt.cat,dk); else if(pt.speakerId===O.pid) statSpoke(pt.correct); }
+  }
+  if(prev && prev.phase!=="final" && s.phase==="final" && s.players[O.pid]) statGame("online");
   if(s.phase==="reveal" && t && O.lastReveal!==t.n && prev){
     O.lastReveal=t.n; SFX.slam();
     if(s.settings.mode==="points"){ if(t.correct){ setTimeout(()=>{SFX.win();confetti();buzz(60);},150); } else setTimeout(()=>{SFX.lose();buzz([80,60,80]);},150); }
@@ -1451,11 +1613,12 @@ const ONLINE_VIEWS = {
         <span class="lbl">Mode</span>${seg("mode",[["points","🏆 Points"],["casual","🎉 Casual"]],st.mode)}
         <span class="lbl">Who picks the word</span>${seg("source",[["opponent","Other team"],["random","Random"]],st.source)}
         <span class="lbl">Category</span>${seg("cat",cats.map(c=>[c,c]),st.category)}
+        <span class="lbl">Difficulty</span>${seg("diff",DIFFS,okDiff(st.difficulty))}
         <span class="lbl">Guesser hears the clip</span>${seg("gp",[[1,"1×"],[2,"2×"],[0,"∞"]],st.guesserPlays)}
         <span class="lbl">Guess timer</span>${seg("timer",[[0,"Off"],[30,"30 sec"],[60,"60 sec"]],st.timer||0)}
         ${st.mode==="points"?`<span class="lbl">Rounds</span>${seg("rounds",[[2,"2"],[4,"4"],[6,"6"],[8,"8"]],st.rounds)}`:""}</div>
         ${errHTML()}<button class="btn" id="start" ${ready?"":"disabled"}>${ready?"START GAME":"NEED 2 PER TEAM"}</button>`
-      :`<div class="card center"><p class="dim">${esc(oname(s.hostId))} is setting up: ${st.mode==="points"?"Points":"Casual"} · ${esc(st.category)} · ${st.source==="opponent"?"other team picks":"random words"}${st.timer?` · ${st.timer} sec timer`:""}</p></div>${waitCard("Waiting for the host","")}`}`,
+      :`<div class="card center"><p class="dim">${esc(oname(s.hostId))} is setting up: ${st.mode==="points"?"Points":"Casual"} · ${esc(st.category)} · ${esc(DIFFS.find(([v])=>v===okDiff(st.difficulty))[1])} · ${st.source==="opponent"?"other team picks":"random words"}${st.timer?` · ${st.timer} sec timer`:""}</p></div>${waitCard("Waiting for the host","")}`}`,
       bind(){
         document.querySelectorAll("[data-team]").forEach(b=>b.onclick=()=>{ SFX.tap(); send({type:"team",team:+b.dataset.team}); });
         $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"BackSlang",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
@@ -1463,7 +1626,7 @@ const ONLINE_VIEWS = {
         if(host){
           const set=x=>send({type:"settings",settings:Object.assign({},st,x)});
           const segb=(id,fn)=>$(id)&&$(id).querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); fn(b.dataset.v); });
-          segb("mode",v=>set({mode:v})); segb("source",v=>set({source:v})); segb("cat",v=>set({category:v})); segb("gp",v=>set({guesserPlays:+v})); segb("rounds",v=>set({rounds:+v})); segb("timer",v=>set({timer:+v}));
+          segb("mode",v=>set({mode:v})); segb("source",v=>set({source:v})); segb("cat",v=>set({category:v})); segb("diff",v=>set({difficulty:v})); segb("gp",v=>set({guesserPlays:+v})); segb("rounds",v=>set({rounds:+v})); segb("timer",v=>set({timer:+v}));
           $("start").onclick=()=>{ ac(); SFX.go(); keepAwake(true); send({type:"start"}); };
         }
       } };
@@ -1601,15 +1764,16 @@ render();
 // First visit: a short how-to-play walkthrough (not when arriving from a room invite).
 try{ if(S.screen==="title" && !localStorage.getItem("bs-toured")) openMenu("tour"); }catch(e){}
 // After the first paint, when the phone is idle: warm up today's Daily so it opens instantly.
-addEventListener("load",()=>setTimeout(()=>idle(prefetchDaily),800));
+addEventListener("load",()=>setTimeout(()=>idle(()=>{ prefetchDaily(); statPush(); }),800));
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){
     // In the background: stop any recording. The mic stays open (the phone pauses it on its own),
     // because Chrome and in-app browsers on iPhone ask for access again on every new request.
     stopRec(); if(unlockEl) try{ unlockEl.pause(); }catch(e){}
+    clearTimeout(stPushT); statPush(); // save the latest stats before the phone suspends the page
   } else {
     if(actx) ac();
-    if(wakeWanted && !["title","setup","daily","solo"].includes(S.screen)) keepAwake(true);
+    if(wakeWanted && !["title","setup","daily","solo","stats"].includes(S.screen)) keepAwake(true);
     // Phones drop sockets in the background. Reconnect right away instead of waiting out the retry delay.
     if(S.screen==="online" && O.code && !O.closed && (!O.ws || O.ws.readyState>1)){ clearTimeout(O.rt); O.retry=0; connect(O.code); }
     if(S.screen==="title") prefetchDaily();
