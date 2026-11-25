@@ -90,6 +90,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-o
 .play svg{width:40%;height:40%}
 .play.spin svg{animation:spin .8s linear infinite}
 .play:disabled{filter:grayscale(1);opacity:.45}
+.play.sm{width:min(30vw,104px);box-shadow:0 7px 0 #075a82}
+.word.sm{font-size:clamp(1.3rem,6.5vw,1.9rem);padding:12px 16px}
+.lrow{display:flex;gap:16px;align-items:center;justify-content:center}
+.lrow .dim{text-align:left;max-width:150px;margin:0}
 @keyframes spin{to{transform:rotate(-360deg)}}
 .pips{display:flex;gap:10px;justify-content:center}
 .pips i{width:18px;height:18px;border-radius:50%;background:var(--b);box-shadow:0 0 12px var(--b);display:block}
@@ -461,7 +465,7 @@ function menuHTML(){
     <ul>
       <li>2 teams of 2. Teams take turns; teammates swap roles each time.</li>
       <li>The other team picks a word in the category (or the app draws one).</li>
-      <li>The Speaker says it, hears it backward (${S.speakerPlays} plays), then says the backward version from memory.</li>
+      <li>The Speaker says it, hears it backward as many times as they want, then says the backward version from memory.</li>
       <li>That copy is flipped and played to the Guesser, who guesses the original.</li>
       <li>Points mode: bet 3 to 8 syllables. Win ${PTS_PER_SYL} points per syllable, miss and lose half.</li>
     </ul>
@@ -588,30 +592,21 @@ const VIEWS = {
         const m=$("mic"); m.onclick=()=>recordInto("orig",m,buf=>{ t.origRev=reverseBuf(buf); t.sPlays=S.speakerPlays; t.copy=null; setTimeout(()=>go("listen","rewind"),250); }); } };
   },
   listen(){
-    const t=S.turn;
-    return { cls:"center", html:`<span class="kicker">Here it is backward</span><h2 class="big-t">Listen close</h2>
-      <button class="play" id="pl" ${t.sPlays?"":"disabled"} aria-label="Play backward">${ICON.rew}</button>
-      <div class="pips">${Array.from({length:S.speakerPlays},(_,i)=>`<i class="${i<S.speakerPlays-t.sPlays?"used":""}"></i>`).join("")}</div>
-      <p class="dim">${t.sPlays} listen${t.sPlays===1?"":"s"} left</p>
-      <button class="btn team" id="next" ${t.sPlays<S.speakerPlays?"":"disabled"}>I'VE GOT IT</button>
-      <button class="link" id="redo">Redo my recording</button>`,
+    const t=S.turn, done=!!t.copy;
+    return { cls:"center", html:`<span class="kicker">Now say it BACKWARD</span>
+      <div class="word sm">${esc(t.word)}</div>
+      <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Tap to hear it backward. Listen as many times as you want.</p></div>
+      ${micHTML(done?"Recorded! Tap to redo":"Tap to record your backward version",done)}
+      ${done?`<button class="btn ghost" id="mine">▶ Hear my take</button><button class="btn team" id="send">SEND TO ${esc(guesser().toUpperCase())}</button>`:""}
+      <button class="link" id="redo">Redo the normal recording</button>`,
       bind(){
-        const p=$("pl");
-        p.onclick=()=>{ if(!t.sPlays) return; t.sPlays--; buzz(15); p.classList.add("spin"); p.disabled=true; play(t.origRev,()=>render()); };
-        $("next").onclick=()=>go("mimic","whoosh");
+        const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(t.origRev,()=>p.classList.remove("spin")); };
+        const m=$("mic"); m.onclick=()=>{ if(done && !activeRec){ t.copy=null; m.classList.remove("done"); } recordInto("copy",m,buf=>{ t.copyFlip=reverseBuf(buf); render(); }); };
+        if(done){ $("mine").onclick=()=>{ if(activeRec) return; buzz(10); play(t.copy); }; $("send").onclick=()=>go("handGss","slam"); }
         $("redo").onclick=()=>go("say");
       } };
   },
-  mimic(){
-    const t=S.turn, done=!!t.copy;
-    return { cls:"center", html:`<span class="kicker">From memory</span><h2 class="big-t">Now say it BACKWARD</h2>
-      ${micHTML(done?"Recorded! Tap to redo":"Tap to record",done)}
-      ${done?`<button class="btn team" id="send">SEND TO ${esc(guesser().toUpperCase())}</button>`:`<p class="dim">Copy the backward sounds as closely as you can.</p>`}`,
-      bind(){
-        const m=$("mic"); m.onclick=()=>{ if(done && !activeRec){ t.copy=null; m.classList.remove("done"); } recordInto("copy",m,buf=>{ t.copyFlip=reverseBuf(buf); render(); }); };
-        if(done) $("send").onclick=()=>go("handGss","slam");
-      } };
-  },
+  mimic(){ return VIEWS.listen(); },
   handGss(){
     return { cls:"center", html:`<div class="splash"><span class="kicker" style="color:#fff">Phone to</span><div class="av" style="width:90px;height:90px;font-size:2.6rem">${esc(guesser().slice(0,1).toUpperCase())}</div>
       <h1 class="huge">${esc(guesser())}</h1><p>${esc(t_hint())}</p></div>
@@ -890,28 +885,23 @@ const ONLINE_VIEWS = {
         const m=$("mic"); m.onclick=()=>recordInto("orig",m,async(buf,blob)=>{ L.origRev=reverseBuf(buf); L.uploading=true; orender();
           try{ await upload("orig",blob); O.err=""; SFX.rewind(); }catch(e){ O.err=e.message; } L.uploading=false; orender(); });
       } };
-    // Stage 2: listen backward (needs the reversed clip; reload-safe)
+    // Stage 2: hear it backward (unlimited) and record the backward copy on one screen
     if(!L.origRev){ getClip("orig").then(c=>{ L.origRev=c.rev; orender(); }).catch(()=>{}); return { cls:"center", html: waitCard("Loading your clip…","") }; }
-    if(!t.clips.copy && !O.mimic) return { cls:"center", html:`<span class="kicker">Here it is backward</span><h2 class="big-t">Listen close</h2>
-      <button class="play" id="pl" ${t.sPlays?"":"disabled"} aria-label="Play backward">${ICON.rew}</button>
-      <div class="pips">${Array.from({length:s.settings.speakerPlays},(_,i)=>`<i class="${i<s.settings.speakerPlays-t.sPlays?"used":""}"></i>`).join("")}</div>
-      <p class="dim">${t.sPlays} listen${t.sPlays===1?"":"s"} left</p>
-      <button class="btn team" id="next" ${t.sPlays<s.settings.speakerPlays?"":"disabled"}>I'VE GOT IT</button>
-      <button class="link" id="redo">Redo my recording</button>`,
-      bind(){
-        const p=$("pl"); p.onclick=()=>{ if(!t.sPlays) return; buzz(15); send({type:"speakerListen"}); p.classList.add("spin"); p.disabled=true; play(L.origRev,()=>orender()); };
-        $("next").onclick=()=>{ O.mimic=true; SFX.whoosh(); orender(); };
-        $("redo").onclick=()=>{ O.mimic=false; L.origRev=null; send({type:"redoOrig"}); };
-      } };
-    // Stage 3: say it backward, then send
     const done=t.clips.copy;
-    return { cls:"center", html:`<span class="kicker">From memory</span><h2 class="big-t">Now say it BACKWARD</h2>
-      ${micHTML(L.uploading?"Sending…":done?"Recorded! Tap to redo":"Tap to record",done)}
-      ${done?`<button class="btn team" id="send">SEND TO ${esc(oname(t.guesserId).toUpperCase())}</button>`:`<p class="dim">Copy the backward sounds as closely as you can.</p>`}${errHTML()}`,
+    return { cls:"center", html:`<span class="kicker">You're the Speaker · now say it BACKWARD</span>
+      <div class="word sm">${esc(t.word)}</div>
+      <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Tap to hear it backward. Listen as many times as you want.</p></div>
+      ${micHTML(L.uploading?"Sending…":done?"Recorded! Tap to redo":"Tap to record your backward version",done)}
+      ${done&&L.copy?`<button class="btn ghost" id="mine">▶ Hear my take</button>`:""}
+      ${done?`<button class="btn team" id="send">SEND TO ${esc(oname(t.guesserId).toUpperCase())}</button>`:""}
+      <button class="link" id="redo">Redo the normal recording</button>${errHTML()}`,
       bind(){
+        const p=$("pl"); p.onclick=()=>{ if(activeRec) return; buzz(15); p.classList.add("spin"); play(L.origRev,()=>p.classList.remove("spin")); };
         const m=$("mic"); m.onclick=()=>{ if(done && !activeRec) m.classList.remove("done");
           recordInto("copy",m,async(buf,blob)=>{ L.uploading=true; orender(); try{ await upload("copy",blob); O.err=""; }catch(e){ O.err=e.message; } L.uploading=false; orender(); }); };
+        if(done && L.copy) $("mine").onclick=()=>{ if(activeRec) return; buzz(10); play(L.copy); };
         if(done) $("send").onclick=()=>{ SFX.go(); send({type:"send"}); };
+        $("redo").onclick=()=>{ L.origRev=null; L.copy=null; send({type:"redoOrig"}); };
       } };
   },
   guess(){
