@@ -181,6 +181,16 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .drow{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:var(--card);font-weight:600;text-align:left;width:100%;box-sizing:border-box}
 .drow.no span{color:var(--bad)} .drow.ok{background:#e8f7ee} .drow.ok span{color:var(--good)}
 .hint{padding:8px 14px;border-radius:12px;background:var(--paper);color:var(--ink);font-weight:500;width:100%;box-sizing:border-box;text-align:left;letter-spacing:.02em}
+.fbw{display:flex;flex-wrap:wrap;gap:6px;flex:1}
+.fbw i,.legend i{font-style:normal;padding:3px 9px;border-radius:8px;font-weight:600}
+.fb-g{background:var(--good);color:#fff} .fb-y{background:#f5b400;color:#1c1917} .fb-n{background:#ffd9bf;color:#1c1917} .fb-x{background:#e7e2dd;color:var(--dim)}
+.heat{font-style:normal;font-size:.8rem;font-weight:600;white-space:nowrap;padding:3px 8px;border-radius:999px;background:#fff}
+.heat.h3{color:var(--good)} .heat.h2{color:var(--a)} .heat.h1{color:#b45309} .heat.h0{color:var(--dim)}
+.legend{font-size:.75rem;display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.legend i{font-size:.75rem;padding:2px 7px}
+.seg.speed{justify-content:center}
+.seg.speed button{background:var(--card)}
+.seg.speed button[aria-checked="true"]{background:var(--ink);color:#fff}
 .dstats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%}
 .dstats div{display:flex;flex-direction:column;font-size:.8rem;color:var(--dim)}
 .dstats b{font-size:1.6rem;color:var(--ink)}
@@ -255,8 +265,8 @@ let actx = null, stream = null, playing = null, micBlocked = false;
 function ac(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==="suspended") actx.resume(); return actx; }
 function decode(ab){ return new Promise((res,rej)=>ac().decodeAudioData(ab,res,rej)); }
 function stopPlay(){ if(playing){ const p=playing; playing=null; try{p.stop()}catch(e){} } }
-function play(buf,onEnd){
-  stopPlay(); const c=ac(); const s=c.createBufferSource(); s.buffer=buf; s.connect(c.destination);
+function play(buf,onEnd,rate){
+  stopPlay(); const c=ac(); const s=c.createBufferSource(); s.buffer=buf; if(rate) s.playbackRate.value=rate; s.connect(c.destination);
   s.onended=()=>{ if(playing===s){ playing=null; onEnd&&onEnd(); } }; s.start(); playing=s;
 }
 function reverseBuf(buf){
@@ -701,7 +711,7 @@ function finish(correct){
 
 
 // ---------- Daily BackWord: one word a day, same for everyone ----------
-const D = { info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
+const D = { speed:(()=>{ try{ return +localStorage.getItem("bw-speed")||0.8; }catch(e){ return 0.8; } })(), info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
 const DKEY="bw-daily", DSTATS="bw-daily-stats";
 const dload = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) || d; }catch(e){ return d; } };
 const dsave = (k,v) => { try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
@@ -736,7 +746,7 @@ async function dailyGuess(text){
     const r=await fetch("/api/daily/guess",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({n:D.info.n,guess:text,misses:st.misses})});
     if(r.status===409){ D.info=null; D.busy=false; openDaily(); return; }
     const j=await r.json();
-    st.guesses.push({ text:text.trim(), ok:j.correct }); st.hints=j.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
+    st.guesses.push({ text:text.trim(), ok:j.correct, fb:j.fb }); st.hints=j.hints; st.misses=j.misses; st.listens=D.listens||st.listens;
     if(j.over){ st.over=true; st.won=j.correct; st.word=j.word;
       const s=dstats(); s.played++; if(j.correct){ s.wins++; s.streak = s.lastWin===D.info.n-1 ? s.streak+1 : 1; s.best=Math.max(s.best,s.streak); s.lastWin=D.info.n; } else s.streak=0; s.lastPlayed=D.info.n; dsave(DSTATS,s);
       if(j.correct){ SFX.win(); confetti(); buzz([40,60,40]); } else { SFX.lose(); buzz(200); }
@@ -756,7 +766,9 @@ VIEWS.daily = function(){
     bind(){ $("retry").onclick=()=>{ D.info=null; openDaily(); }; $("home").onclick=()=>go("title"); } };
   const st=dstate(), max=D.info.maxGuesses, left=max-st.guesses.length;
   if(!st.listens && D.listens) st.listens=D.listens;
-  const rows = st.guesses.map(g=>`<div class="drow ${g.ok?"ok":"no"}"><span>${g.ok?"✓":"✗"}</span>${esc(g.text)}</div>`).join("");
+  const rows = st.guesses.map(g=>`<div class="drow ${g.ok?"ok":"no"}">${g.ok?`<span>✓</span>${esc(g.text)}`:
+    `<div class="fbw">${(g.fb&&g.fb.words||[{w:g.text,s:"x"}]).map(x=>`<i class="fb-${x.s}">${esc(x.w)}</i>`).join("")}</div>${g.fb?`<em class="heat h${g.fb.level}">${esc(g.fb.heat)}</em>`:""}`}</div>`).join("");
+  const legend = st.guesses.some(g=>g.fb) && !st.over ? `<p class="dim legend"><i class="fb-g">right spot</i> <i class="fb-y">wrong spot</i> <i class="fb-n">almost</i> <i class="fb-x">not in it</i></p>` : "";
   const hints = st.hints.map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
   if(st.over){
     const s=dstats();
@@ -769,8 +781,8 @@ VIEWS.daily = function(){
       <p class="dim">Next word in ${untilNext()}</p>
       <button class="link" id="home">Back to menu</button>`,
       bind(){
-        $("fwd").onclick=()=>{ if(D.fwd) play(D.fwd); };
-        $("pl").onclick=()=>{ if(D.rev) play(D.rev); };
+        $("fwd").onclick=()=>{ if(D.fwd) play(D.fwd,null,D.speed); };
+        $("pl").onclick=()=>{ if(D.rev) play(D.rev,null,D.speed); };
         $("share").onclick=async()=>{ const t=shareText(st);
           try{ if(navigator.share){ await navigator.share({text:t}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(t); D.copied=true; render(); setTimeout(()=>{ D.copied=false; if(S.screen==="daily") render(); },1600); }catch(e){} };
@@ -780,20 +792,26 @@ VIEWS.daily = function(){
   const L=D.local, mine=L.mine;
   return { cls:"center", html:`<span class="kicker">Daily BackWord #${D.info.n} · ${esc(D.info.cat)}</span>
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Today's word, played backward. Listen as much as you want.</p></div>
+    ${speedSeg()}
     <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${mine?"":"disabled"}>🔄 Flip mine</button></div>
     <p class="dim" style="margin:0">Copy the backward sound, then flip your copy to hear the real word.</p>
-    ${hints}${rows}
+    ${rows}${legend}${hints}
     <input class="inp" id="dg" autocomplete="off" autocapitalize="off" placeholder="Your guess" value="${esc(D.draft)}">
     <button class="btn" id="go" ${D.busy?"disabled":""}>${D.busy?"CHECKING…":`GUESS · ${left} LEFT`}</button>
     ${D.err?`<p class="err">${esc(D.err)}</p>`:""}`,
     bind(){
-      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; D.listens++; buzz(15); p.classList.add("spin"); play(D.rev,()=>p.classList.remove("spin")); };
+      const p=$("pl"); p.onclick=()=>{ if(activeRec) return; D.listens++; buzz(15); p.classList.add("spin"); play(D.rev,()=>p.classList.remove("spin"),D.speed); };
+      bindSpeed();
       const r=$("rec"); r.onclick=()=>recordInto("rec",r,buf=>{ L.mine=reverseBuf(buf); render(); });
       if(mine) $("flip").onclick=()=>{ if(activeRec) return; buzz(10); play(L.mine); };
       const g=$("dg"); g.oninput=()=>D.draft=g.value; g.onkeydown=e=>{ if(e.key==="Enter") $("go").click(); };
       $("go").onclick=()=>{ if(!D.draft.trim()){ g.focus(); return; } D.err=""; dailyGuess(D.draft); };
     } };
 };
+
+const SPEEDS=[[1,"Normal"],[0.8,"Slow"],[0.65,"Slower"]];
+function speedSeg(){ return `<div class="seg speed" id="speed" role="radiogroup" aria-label="Playback speed">${SPEEDS.map(([v,l])=>`<button type="button" role="radio" aria-checked="${v===D.speed}" data-v="${v}">${l}</button>`).join("")}</div>`; }
+function bindSpeed(){ const el=$("speed"); if(!el) return; el.querySelectorAll("button").forEach(b=>b.onclick=()=>{ SFX.tap(); D.speed=+b.dataset.v; try{ localStorage.setItem("bw-speed",D.speed); }catch(e){} render(); if(D.rev) play(D.rev,null,D.speed); }); }
 
 // ================= Online mode: every player on their own phone =================
 const O = { ws:null, st:null, code:"", pid:"", name:"", err:"", clips:{}, local:{}, mimic:false, lastReveal:0, retry:0, closed:false, pickDraft:"", guessDraft:"" };
