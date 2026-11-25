@@ -23,7 +23,13 @@ Workers AI text-to-speech, caches the clip for the day, and checks guesses at `/
 Daily answers are picked to stay clear when reversed: `tools/clarity.py` scores each word from its
 CMU dictionary pronunciation (diphthongs like the "ai" in nightingale, r-colored vowels, consonant
 clusters, dark l, extra words and syllables all add difficulty), and `tools/daily.py` keeps only
-2 to 4 syllable words with no "ai", "oi" or "ow" sound and a low score. Free play draws from
-`docs/clear.json` (built by `tools/freeplay.py`) the same way, a bit more loosely.
+2 to 4 syllable words with no "ai", "oi" or "ow" sound and a low score.
+
+## Difficulty
+
+Every category has Easy, Normal and Hard. Normal is the whole word list. `tools/levels.py` ranks each
+category by clarity score and writes `docs/levels.json`: Easy is the clearest 40% (at most 4 syllables),
+Hard the least clear 40%. The team game and online rooms default to Normal, Free play to Easy.
+
 Players get 5 guesses, a new hint after each miss, a "say it back and flip" helper, stats,
 a streak and a share button.
