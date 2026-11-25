@@ -45,10 +45,10 @@ const shape = w => w.split(" ").map(x => x.replace(/[a-z0-9]/gi, "_")).join("  "
 function dailyHints(t, misses) {
   const words = t.word.split(" ");
   const all = [
-    `${t.syl} syllables`,
+    `${t.syl} syllable${t.syl > 1 ? "s" : ""} long`,
     `${words.length} word${words.length > 1 ? "s" : ""}: ${shape(t.word)}`,
-    `Starts with: ${words.map(x => x[0].toUpperCase()).join(" ")}`,
-    `Looks like: ${words.map(x => x.length > 1 ? x[0].toUpperCase() + x.slice(1, -1).replace(/[a-z0-9]/gi, "_") + x.slice(-1) : x.toUpperCase()).join(" ")}`,
+    `Starts with ${words.map(x => x[0].toUpperCase()).join(" ")}`,
+    `Looks like ${words.map(x => x.length > 1 ? x[0].toUpperCase() + x.slice(1, -1).replace(/[a-z0-9]/gi, "_") + x.slice(-1) : x.toUpperCase()).join(" ")}`,
   ];
   return all.slice(0, Math.min(misses, all.length));
 }
@@ -70,7 +70,7 @@ function feedback(guess, answer) {
   const pts = { g: 2, y: 1.5, n: 1, x: 0 }, r2 = aw.length ? marks.reduce((t, m) => t + pts[m], 0) / (2 * Math.max(aw.length, gw.length)) : 0;
   const r = Math.max(r1, r2);
   const level = r >= 0.75 ? 3 : r >= 0.5 ? 2 : r >= 0.3 ? 1 : 0;
-  return { words: gw.map((w, i) => ({ w, s: marks[i] })), level, heat: ["Cold", "Warm", "Close", "Very close"][level] };
+  return { words: gw.map((w, i) => ({ w, s: marks[i] })), level, heat: ["Not close", "Getting warmer", "Close", "Very close"][level] };
 }
 const json = (o, init = {}) => new Response(JSON.stringify(o), { ...init, headers: { "content-type": "application/json", "cache-control": "no-store", ...(init.headers || {}) } });
 async function dailyAudio(env, t, origin) {
