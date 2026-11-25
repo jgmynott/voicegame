@@ -1,6 +1,7 @@
 // Game server: one Durable Object per room code. Holds the game state, relays it to every
 // phone over WebSockets, and stores the audio clips so each phone can fetch them.
 import { DurableObject } from "cloudflare:workers";
+import DAILY from "./daily-words.js";
 
 const PTS_PER_SYL = 10;
 const pointsFor = s => s * PTS_PER_SYL;
@@ -13,10 +14,86 @@ export default {
     const url = new URL(req.url);
     const m = url.pathname.match(/^\/api\/room\/([A-Z]{4})(\/.*)?$/);
     if (m) return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(req);
+    if (url.pathname.startsWith("/api/daily")) return daily(req, env, url);
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
     return env.ASSETS.fetch(req);
   }
 };
+
+// ---------- Daily puzzle ----------
+// One answer per day (America/New_York), the same for everyone. Puzzle #1 is 2026-11-24.
+const DAILY_TZ = "America/New_York", DAILY_START = Date.UTC(2026, 10, 24), DAILY_GUESSES = 5;
+function dailyToday() {
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: DAILY_TZ }).format(new Date());
+  const [y, mo, d] = date.split("-").map(Number);
+  const n = Math.round((Date.UTC(y, mo - 1, d) - DAILY_START) / 864e5) + 1;
+  const [word, cat, syl] = DAILY[((n - 1) % DAILY.length + DAILY.length) % DAILY.length];
+  return { n, date, word, cat, syl };
+}
+const shape = w => w.split(" ").map(x => x.replace(/[a-z0-9]/gi, "_")).join("  ");
+function dailyHints(t, misses) {
+  const words = t.word.split(" ");
+  const all = [
+    `${t.syl} syllables`,
+    `${words.length} word${words.length > 1 ? "s" : ""}: ${shape(t.word)}`,
+    `Starts with: ${words.map(x => x[0].toUpperCase()).join(" ")}`,
+    `Looks like: ${words.map(x => x.length > 1 ? x[0].toUpperCase() + x.slice(1, -1).replace(/[a-z0-9]/gi, "_") + x.slice(-1) : x.toUpperCase()).join(" ")}`,
+  ];
+  return all.slice(0, Math.min(misses, all.length));
+}
+const json = (o, init = {}) => new Response(JSON.stringify(o), { ...init, headers: { "content-type": "application/json", "cache-control": "no-store", ...(init.headers || {}) } });
+async function dailyAudio(env, t, origin) {
+  const key = new Request(`${origin}/api/daily/audio?d=${t.date}&v=1`);
+  const cache = caches.default;
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  let bytes = null, type = "audio/mpeg";
+  const tries = [
+    ["@cf/deepgram/aura-2-en", { text: t.word, encoding: "mp3" }],
+    ["@cf/deepgram/aura-1", { text: t.word, speaker: "asteria", encoding: "mp3" }],
+    ["@cf/myshell-ai/melotts", { prompt: t.word, lang: "en" }],
+  ];
+  let lastErr = "";
+  for (const [model, input] of tries) {
+    try {
+      const r = await env.AI.run(model, input, { returnRawResponse: true });
+      if (r instanceof Response) {
+        if (!r.ok) throw new Error(model + " " + r.status);
+        const ct = r.headers.get("content-type") || "";
+        if (ct.includes("json")) { const j = await r.json(); const a = j.audio || (j.result && j.result.audio); if (!a) throw new Error(model + " no audio"); bytes = Uint8Array.from(atob(a), c => c.charCodeAt(0)); }
+        else { bytes = new Uint8Array(await r.arrayBuffer()); if (ct.startsWith("audio/")) type = ct; }
+      } else if (r && typeof r.getReader === "function") bytes = new Uint8Array(await new Response(r).arrayBuffer());
+      else if (r && r.audio) bytes = Uint8Array.from(atob(r.audio), c => c.charCodeAt(0));
+      if (bytes && bytes.length > 500) break;
+      bytes = null;
+    } catch (e) { lastErr = String(e && e.message || e); }
+  }
+  if (!bytes) return new Response("Voice unavailable: " + lastErr, { status: 503 });
+  const res = new Response(bytes, { headers: { "content-type": type, "cache-control": "public, max-age=90000" } });
+  await cache.put(key, res.clone());
+  return res;
+}
+async function daily(req, env, url) {
+  const t = dailyToday();
+  if (url.pathname === "/api/daily" && req.method === "GET")
+    return json({ n: t.n, date: t.date, cat: t.cat, maxGuesses: DAILY_GUESSES });
+  if (url.pathname === "/api/daily/audio" && req.method === "GET") {
+    const r = await dailyAudio(env, t, url.origin);
+    if (!r.ok) return r;
+    return new Response(r.body, { headers: { "content-type": r.headers.get("content-type"), "cache-control": "private, max-age=600" } });
+  }
+  if (url.pathname === "/api/daily/guess" && req.method === "POST") {
+    let body = {}; try { body = await req.json(); } catch (e) {}
+    if (Number(body.n) !== t.n) return json({ stale: true, n: t.n }, { status: 409 });
+    const guess = String(body.guess || "").slice(0, 120);
+    const prior = Math.max(0, Math.min(DAILY_GUESSES, Number(body.misses) || 0));
+    const correct = judge(guess, t.word);
+    const misses = correct ? prior : prior + 1;
+    const over = correct || misses >= DAILY_GUESSES;
+    return json({ correct, misses, over, hints: dailyHints(t, misses), word: over ? t.word : undefined, syl: over ? t.syl : undefined });
+  }
+  return new Response("Not found", { status: 404 });
+}
 
 // ---------- pure game helpers ----------
 const norm = s => s.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\b(a|an|the)\b/g, " ").replace(/\s+/g, " ").trim();
