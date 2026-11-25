@@ -4,13 +4,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Reverse">
+<meta name="apple-mobile-web-app-title" content="BackWords">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
 </head><body>
-<title>Reverse Voice Game</title>
+<title>BackWords</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800;900&display=swap">
 <style>
@@ -456,7 +456,7 @@ function topbar(){
   const inGame = !["title","setup"].includes(S.screen);
   const sc = inGame && pts() ? `<div class="scores"><span class="s sa ${S.turnTeam===0&&S.screen!=="final"?"on":""}" id="sc0">${S.teams[0].score}</span><span class="dim">:</span><span class="s sb ${S.turnTeam===1&&S.screen!=="final"?"on":""}" id="sc1">${S.teams[1].score}</span></div>`
     : inGame ? `<div class="chip">Casual · turn ${S.history.length+1}</div>` : "";
-  return `<div class="bar"><div class="logo"><span>◀◀</span><span>REVERSE</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  return `<div class="bar"><div class="logo"><span>◀◀</span><span>BACKWORDS</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
 }
 let quitArmed=false;
 function menuHTML(){
@@ -507,7 +507,7 @@ function afterBet(){
 
 const VIEWS = {
   title(){
-    return { cls:"center", html:`<div class="title"><h1 class="huge">REVERSE</h1><h1 class="huge mirror" aria-hidden="true">REVERSE</h1></div>
+    return { cls:"center", html:`<div class="title"><h1 class="huge">BACKWORDS</h1><h1 class="huge mirror" aria-hidden="true">BACKWORDS</h1></div>
       ${WORD_COUNT?`<span class="chip">${WORD_COUNT.toLocaleString()} words and phrases</span>`:""}<p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
       ${ONLINE_OK?`<button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
@@ -774,7 +774,7 @@ function onlineTopbar(){
   const sc = !s ? "" : s.phase==="lobby" ? `<div class="chip">Room ${esc(O.code)}</div>`
     : s.settings.mode==="points" ? `<div class="scores"><span class="s sa ${s.turnTeam===0?"on":""}">${s.scores[0]}</span><span class="dim">:</span><span class="s sb ${s.turnTeam===1?"on":""}">${s.scores[1]}</span></div>`
     : `<div class="chip">Room ${esc(O.code)}</div>`;
-  return `<div class="bar"><div class="logo"><span>◀◀</span><span>REVERSE</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
+  return `<div class="bar"><div class="logo"><span>◀◀</span><span>BACKWORDS</span></div>${sc}<button class="iconbtn" id="menuBtn" aria-label="Menu">${ICON.menu}</button></div>`;
 }
 
 const av = (id,big) => `<div class="av" style="${big?"width:90px;height:90px;font-size:2.6rem":""}">${esc(oname(id).slice(0,1).toUpperCase())}</div>`;
@@ -829,7 +829,7 @@ const ONLINE_VIEWS = {
       :`<div class="card center"><p class="dim">${esc(oname(s.hostId))} is setting up: ${st.mode==="points"?"Points":"Casual"} · ${esc(st.category)} · ${st.source==="opponent"?"other team picks":"random words"}</p></div>${waitCard("Waiting for the host","")}`}`,
       bind(){
         document.querySelectorAll("[data-team]").forEach(b=>b.onclick=()=>{ SFX.tap(); send({type:"team",team:+b.dataset.team}); });
-        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"Reverse",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
+        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"BackWords",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(link); $("share").textContent="Link copied"; }catch(e){ $("share").textContent=link; } };
         if(host){
           const set=x=>send({type:"settings",settings:Object.assign({},st,x)});

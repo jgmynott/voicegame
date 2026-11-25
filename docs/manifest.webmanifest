@@ -1,6 +1,6 @@
 {
-  "name": "Reverse Voice Game",
-  "short_name": "Reverse",
+  "name": "BackWords",
+  "short_name": "BackWords",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
