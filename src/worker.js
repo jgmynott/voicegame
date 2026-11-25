@@ -12,6 +12,10 @@ const MAX_CLIP_BYTES = 1_500_000;
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (url.hostname === "www.backslang.io") {
+      url.hostname = "backslang.io";
+      return Response.redirect(url.toString(), 301);
+    }
     const m = url.pathname.match(/^\/api\/room\/([A-Z]{4})(\/.*)?$/);
     if (m) return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(req);
     if (url.pathname.startsWith("/api/daily")) return daily(req, env, url);
