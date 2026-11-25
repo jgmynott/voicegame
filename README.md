@@ -33,3 +33,12 @@ Hard the least clear 40%. The team game and online rooms default to Normal, Free
 
 Players get 5 guesses, a new hint after each miss, a "say it back and flip" helper, stats,
 a streak and a share button.
+
+## Settings and extras
+
+Settings (menu or the home screen link) are saved on the phone under `bs-settings`: effects and voice
+volume, vibration, starting listening speed, theme (match phone, light, dark), larger text and reduce motion.
+First visit shows a short how-to-play walkthrough (`bs-toured` marks it seen). Games on one phone support
+2 to 4 players per team, team colors, restart and skip word from the menu. An optional 30 or 60 second guess
+timer works on one phone and in online rooms (room setting `timer`). Daily has a give up option
+(`giveup: true` on `/api/daily/guess`), which ends the puzzle as a loss.
