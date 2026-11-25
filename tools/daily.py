@@ -29,7 +29,7 @@ pool, seen = [], set()
 for cat, levels in words.items():
     for lvl, lst in levels.items():
         for w in lst:
-            if w in base.get(cat, ()) and w.lower() not in seen and 3 <= int(lvl) <= 7:
+            if w in base.get(cat, ()) and w.lower() not in seen and 3 <= int(lvl) <= 6:
                 seen.add(w.lower()); pool.append([w, cat, int(lvl)])
 random.Random(20261125).shuffle(pool)
 with open(os.path.join(root, "src", "daily-words.js"), "w") as f:

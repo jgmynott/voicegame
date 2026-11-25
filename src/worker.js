@@ -293,7 +293,7 @@ export class Room extends DurableObject {
           await this.newTurn(); break;
         }
         case "bet": {
-          if (s.phase !== "bet" || pid !== t.speakerId || !(m.level >= 3 && m.level <= 8)) return;
+          if (s.phase !== "bet" || pid !== t.speakerId || !(m.level >= 1 && m.level <= 6)) return;
           t.level = m.level; await this.afterBet(); break;
         }
         case "pick": {
