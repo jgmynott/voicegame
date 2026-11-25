@@ -1,6 +1,6 @@
 {
-  "name": "BackWords",
-  "short_name": "BackWords",
+  "name": "ReVerse",
+  "short_name": "ReVerse",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
