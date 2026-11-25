@@ -344,8 +344,10 @@ let activeRec=null;
 function stopRec(){ if(activeRec && activeRec.state==="recording") activeRec.stop(); }
 // Turn the mic off when it isn't needed (home screen, app in the background). An open mic keeps the
 // phone's recording indicator on and, on iPhones, routes playback through voice processing, which is quieter.
+let releaseAfterRec=false;
 function releaseMic(){
-  if(activeRec){ stopRec(); return; } // the recorder's onstop closes the mic
+  if(activeRec){ releaseAfterRec=true; stopRec(); return; } // the recorder's onstop closes the mic
+  releaseAfterRec=false;
   if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=null; }
   // Back to the playback session so the silent switch can't mute the game and sound uses the loud speaker.
   setSession("playback"); if(actx && !document.hidden) ac();
@@ -478,15 +480,19 @@ function tickFx(){
 
 // ---------- mic with level meter ----------
 let analyser=null, meterRaf=0, recTimer=0, recStart=0;
-async function ensureMic(keep){
-  try{ await getStream(); S.micError=""; if(!keep) releaseMic(); return true; }
+// The mic is opened once and kept open for the whole game. Chrome and other in-app browsers on
+// iPhone ask for (or delay) mic access on every new request, so it is only closed at the home
+// screen or when the app goes to the background. While it is open iOS uses play-and-record,
+// which also ignores the silent switch.
+async function ensureMic(){
+  try{ await getStream(); S.micError=""; return true; }
   catch(e){ let framed=false; try{ framed=window.top!==window.self; }catch(_){ framed=true; }
     S.micError = framed ? "The mic is blocked in this preview. Open the game from its own app link to record." : location.protocol==="https:"||location.hostname==="localhost" ? "Microphone blocked. Allow mic access for this site in your browser settings, then reload." : "This page needs to be opened from its https link to use the mic."; return false; }
 }
 async function recordInto(key,btn,onDone){
   if(activeRec){ stopRec(); return; }
   stopPlay();
-  if(!(await ensureMic(true))){ render(); return; }
+  if(!(await ensureMic())){ render(); return; }
   SFX.recOn(); buzz(30);
   await new Promise(r=>setTimeout(r,180));
   const s=await getStream(); const chunks=[]; let mr;
@@ -494,7 +500,7 @@ async function recordInto(key,btn,onDone){
   mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
   mr.onstop=async()=>{
     clearTimeout(mr._t); cancelAnimationFrame(meterRaf); clearInterval(recTimer); activeRec=null;
-    releaseMic(); // close the mic after every take so playback is full volume and ignores the silent switch
+    if(releaseAfterRec) releaseMic();
     SFX.recOff(); buzz(20);
     try{ const blob=new Blob(chunks,{type:mr.mimeType||"audio/mp4"}); const buf=trimBuf(await cleanBuf(await decode(await blob.arrayBuffer()))); S.turn[key]=buf; onDone(buf,blob); }
     catch(e){ S.micError="Could not read that recording. Try again."; render(); }
