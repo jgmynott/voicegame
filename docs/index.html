@@ -305,7 +305,7 @@ async function cleanBuf(buf){
 // Slow speech down without dropping the pitch (WSOLA time-stretch). rate<1 is slower.
 function stretchBuf(buf,rate){
   if(!rate || rate>=0.99) return buf;
-  const sr=buf.sampleRate, x=buf.getChannelData(0), N=Math.round(sr*0.046), H=N>>1, tol=Math.round(sr*0.012);
+  const sr=buf.sampleRate, x=buf.getChannelData(0), N=Math.round(sr*0.046), H=N>>1, tol=Math.round(sr*0.015);
   const outLen=Math.ceil(x.length/rate)+N, y=new Float32Array(outLen), wsum=new Float32Array(outLen);
   const win=new Float32Array(N); for(let i=0;i<N;i++) win[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));
   let prev=0, o=0;
@@ -313,7 +313,7 @@ function stretchBuf(buf,rate){
     const center=Math.round(o*rate); if(center+N+tol>=x.length) break;
     let best=center;
     if(o>0){ const nat=prev+H; let bestC=-Infinity;
-      for(let k=-tol;k<=tol;k+=2){ const p=center+k; if(p<0||p+N>=x.length) continue; let c=0; for(let i=0;i<N;i+=4) c+=x[p+i]*x[nat+i]; if(c>bestC){ bestC=c; best=p; } } }
+      for(let k=-tol;k<=tol;k++){ const p=center+k; if(p<0||p+N>=x.length) continue; let c=0; for(let i=0;i<N;i+=4) c+=x[p+i]*x[nat+i]; if(c>bestC){ bestC=c; best=p; } } }
     for(let i=0;i<N;i++){ y[o+i]+=x[best+i]*win[i]; wsum[o+i]+=win[i]; }
     prev=best;
   }
@@ -968,8 +968,14 @@ const P = { cat:(()=>{ try{ return localStorage.getItem("bw-solo-cat")||"Mixed";
 const SOLO_CACHE = new WeakMap();
 function soloSpeed(buf){ if(!buf) return null; let m=SOLO_CACHE.get(buf); if(!m){ m={}; SOLO_CACHE.set(buf,m); } if(!m[D.speed]) m[D.speed]=stretchBuf(buf,D.speed); return m[D.speed]; }
 
+// Free play only draws words that stay clear when the AI voice plays them backward (docs/clear.json,
+// built by tools/freeplay.py). Until that list loads, or if it fails, any word can come up.
+let SOLO_OK=null;
+fetch("clear.json").then(r=>r.ok?r.json():null).then(a=>{ if(Array.isArray(a)&&a.length) SOLO_OK=new Set(a); }).catch(()=>{});
 function soloPick(){
   const cat = P.cat==="Mixed" ? CATS[Math.floor(Math.random()*CATS.length)] : P.cat;
+  const list = SOLO_OK ? deckList(cat,null).filter(([w])=>SOLO_OK.has(w.toLowerCase())) : [];
+  if(list.length){ const [word,syl]=drawFrom("solo|"+cat,list); return { word, syl, cat }; }
   const d = drawWord(cat,null);
   return { word:d.word, syl:d.syl, cat };
 }
