@@ -15,6 +15,13 @@ export default {
     const m = url.pathname.match(/^\/api\/room\/([A-Z]{4})(\/.*)?$/);
     if (m) return env.ROOM.get(env.ROOM.idFromName(m[1])).fetch(req);
     if (url.pathname.startsWith("/api/daily")) return daily(req, env, url);
+    if (url.pathname === "/api/say" && req.method === "GET") {
+      const w = (url.searchParams.get("w") || "").trim().slice(0, 80);
+      if (!w || !(await wordSet(env, url.origin)).has(w.toLowerCase())) return new Response("Unknown word", { status: 404 });
+      const r = await ttsAudio(env, w, `${url.origin}/api/say?w=${encodeURIComponent(w.toLowerCase())}&v=1`);
+      if (!r.ok) return r;
+      return new Response(r.body, { headers: { "content-type": r.headers.get("content-type"), "cache-control": "public, max-age=86400" } });
+    }
     if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
     return env.ASSETS.fetch(req);
   }
@@ -63,7 +70,21 @@ function feedback(guess, answer) {
 }
 const json = (o, init = {}) => new Response(JSON.stringify(o), { ...init, headers: { "content-type": "application/json", "cache-control": "no-store", ...(init.headers || {}) } });
 async function dailyAudio(env, t, origin) {
-  const key = new Request(`${origin}/api/daily/audio?d=${t.date}&v=1`);
+  return ttsAudio(env, t.word, `${origin}/api/daily/audio?d=${t.date}&v=1`);
+}
+// Free play: speak any entry from the public word list (and only those, so the endpoint can't be used as a general voice).
+let WORDSET = null;
+async function wordSet(env, origin) {
+  if (WORDSET) return WORDSET;
+  const r = await env.ASSETS.fetch(new Request(origin + "/words.json"));
+  const data = await r.json(), set = new Set();
+  for (const levels of Object.values(data)) for (const arr of Object.values(levels)) for (const w of arr) set.add(w.toLowerCase());
+  for (const [w] of DAILY) set.add(w.toLowerCase());
+  return (WORDSET = set);
+}
+async function ttsAudio(env, text, cacheUrl) {
+  const t = { word: text };
+  const key = new Request(cacheUrl);
   const cache = caches.default;
   const hit = await cache.match(key);
   if (hit) return hit;
