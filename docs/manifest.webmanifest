@@ -1,6 +1,6 @@
 {
-  "name": "BackWords",
-  "short_name": "BackWords",
+  "name": "BackSlang",
+  "short_name": "BackSlang",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

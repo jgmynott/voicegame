@@ -4,32 +4,38 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="BackWords">
+<meta name="apple-mobile-web-app-title" content="BackSlang">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<title>BackWords</title>
-<!-- Fredoka (SIL Open Font License) is served from this site, so the first paint does not wait on another domain. -->
+<title>BackSlang</title>
+<!-- Fonts (SIL Open Font License) are served from this site, so the first paint does not wait on another domain.
+     Titan One: chunky bubble letters for the logo, headings and buttons. Fredoka: body text. -->
+<link rel="preload" href="fonts/titan-one-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/fredoka-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
 <style>
 @font-face{font-family:"Fredoka";font-style:normal;font-weight:300 700;font-stretch:100%;font-display:swap;src:url(fonts/fredoka-latin.woff2) format("woff2");
   unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+/* Titan One has one weight. Declaring it for the whole weight range stops browsers from faking a bold on top of it. */
+@font-face{font-family:"Titan One";font-style:normal;font-weight:100 900;font-display:swap;src:url(fonts/titan-one-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 /* Layout: phone-first stage. A thin bar on top, one main action per screen, centered.
-   Look: white and orange, one rounded friendly font (Fredoka), flat shapes, little decoration. */
+   Look: white and orange, chunky bubble letters (Titan One) with a brownish-green offset shadow for the
+   logo and headings, a pudgy rounded body font (Fredoka at a heavy weight), flat shapes. */
 :root{
   --bg:#ffffff; --card:#f6f2ee; --ink:#1c1917; --dim:#78716c; --line:#e9e2db;
   --a:#ff6a13; --a-dk:#4e5226; --b:#1c1917; --b-dk:#4e5226; --shadow:#4e5226;
   --gold:#ff6a13; --gold-dk:#4e5226; --good:#16a34a; --good-dk:#0f7a37; --bad:#dc2626;
   --paper:#fff4ec; --paper-ink:#1c1917; --on-team:#ffffff;
   --team:var(--a); --team-dk:var(--a-dk);
-  --f-d:"Fredoka","Arial Rounded MT Bold",system-ui,sans-serif;
+  --f-d:"Titan One","Fredoka","Arial Rounded MT Bold",system-ui,sans-serif;
   --f-b:"Fredoka",system-ui,-apple-system,sans-serif;
   color-scheme:light;
 }
 body[data-team="1"]{--team:var(--b);--team-dk:var(--b-dk)}
 html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-b);font-weight:500;font-size:17px;line-height:1.35;
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-b);font-weight:600;font-size:17px;line-height:1.35;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px 24px;
   -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 input{user-select:text;-webkit-user-select:text}
@@ -37,13 +43,14 @@ input{user-select:text;-webkit-user-select:text}
 h1,h2,.d{font-family:var(--f-d);font-weight:600;margin:0;letter-spacing:-.01em;text-wrap:balance}
 p{margin:0}
 .dim{color:var(--dim)}
-b{font-weight:600}
+b{font-weight:700}
 
 /* top bar */
 .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0 10px}
 .logo{font-family:var(--f-d);font-weight:600;font-size:1.15rem;display:flex;gap:0;align-items:center;letter-spacing:-.01em;background:none;border:none;color:var(--ink);padding:6px 6px 6px 0;margin:0;cursor:pointer;min-height:40px}
 .logo .bk{display:inline-block;width:.9em;margin-right:2px;font-size:1.3rem;line-height:1;color:var(--dim)}
 .logo .w{color:var(--a)}
+.logo span:not(.bk){text-shadow:.04em .07em 0 var(--shadow)}
 .scores{display:flex;align-items:center;gap:6px;font-family:var(--f-d);font-weight:600;font-size:1.1rem;font-variant-numeric:tabular-nums}
 .scores .s{padding:3px 10px;border-radius:999px;min-width:2.4em;text-align:center;color:#fff}
 .scores .sa{background:var(--a)} .scores .sb{background:var(--b)}
@@ -58,19 +65,19 @@ b{font-weight:600}
 .center{text-align:center;align-items:center}
 .kicker{font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
 .huge{font-size:clamp(2.6rem,13vw,4rem);line-height:.95}
-.big-t{font-size:clamp(1.8rem,8.5vw,2.4rem);line-height:1.05}
+.big-t{font-size:clamp(1.8rem,8.5vw,2.4rem);line-height:1.05;text-shadow:.04em .06em 0 rgba(78,82,38,.28)}
 
 /* buttons: flat, rounded, a small press */
 .btn{font-family:var(--f-d);font-weight:600;font-size:1.3rem;border:none;border-radius:16px;padding:16px 20px;cursor:pointer;width:100%;
-  background:var(--a);color:#fff;box-shadow:0 4px 0 var(--a-dk);transition:transform .06s, box-shadow .06s;letter-spacing:.01em}
+  background:var(--a);color:#fff;box-shadow:0 4px 0 var(--a-dk);transition:transform .06s, box-shadow .06s;letter-spacing:.02em;text-shadow:0 .08em 0 rgba(78,82,38,.55)}
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--a-dk)}
 .btn.team{background:var(--team);color:#fff;box-shadow:0 4px 0 var(--team-dk)}
 .btn.team:active{box-shadow:0 1px 0 var(--team-dk)}
-.btn.ghost{background:var(--card);color:var(--ink);box-shadow:none;font-size:1.05rem;padding:13px}
+.btn.ghost{background:var(--card);color:var(--ink);box-shadow:none;font-size:1.05rem;padding:13px;text-shadow:none}
 .btn.ghost:active{background:var(--line)}
 .btn svg{width:1.1em;height:1.1em;vertical-align:-.15em}
 .btn:disabled{opacity:.35;pointer-events:none}
-.link{background:none;border:none;color:var(--dim);font:500 .95rem var(--f-b);text-decoration:underline;cursor:pointer;padding:8px}
+.link{background:none;border:none;color:var(--dim);font:600 .95rem var(--f-b);text-decoration:underline;cursor:pointer;padding:8px}
 button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offset:3px}
 .row{display:flex;gap:12px}
 .row>*{flex:1}
@@ -131,9 +138,9 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
   box-shadow:0 4px 0 var(--shadow);animation:enter .3s backwards}
 .bet:active{transform:translateY(3px);box-shadow:0 1px 0 var(--shadow)}
 .bet .n{font-size:2.4rem;line-height:1}
-.bet .s{font-size:.7rem;letter-spacing:.1em;opacity:.9;font-weight:500}
+.bet .s{font-size:.7rem;letter-spacing:.1em;opacity:.9;font-weight:600}
 .bet .p{font-size:1.05rem}
-.bet .m{font-size:.75rem;opacity:.85;font-weight:500}
+.bet .m{font-size:.75rem;opacity:.85;font-weight:600}
 
 /* inputs */
 .inp{width:100%;box-sizing:border-box;font:600 1.3rem var(--f-b);padding:14px;border-radius:14px;border:2px solid var(--line);background:#fff;color:var(--ink);text-align:center}
@@ -155,10 +162,13 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 
 /* title, setup */
 .title{text-align:center;padding:10px 0 4px}
-.title .huge{font-size:clamp(3rem,15vw,4.4rem);font-weight:700}
+.title .huge{font-size:clamp(2.2rem,14vw,4.4rem);font-weight:700}
 .title .mirror{display:block;transform:scaleX(-1);color:var(--a)}
+/* Bubble letters: a dark outline drawn behind the fill, and a solid brownish-green offset shadow. */
+.title .huge,.code{-webkit-text-stroke:.09em var(--ink);paint-order:stroke fill;text-shadow:.05em .08em 0 var(--shadow)}
+.title .huge:not(.mirror){color:#fff}
 .seg{display:flex;flex-wrap:wrap;gap:8px}
-.seg button{font:500 .95rem var(--f-b);padding:9px 14px;border-radius:999px;border:none;background:#fff;color:var(--dim);cursor:pointer}
+.seg button{font:600 .95rem var(--f-b);padding:9px 14px;border-radius:999px;border:none;background:#fff;color:var(--dim);cursor:pointer}
 .seg button[aria-checked="true"]{background:var(--a);color:#fff}
 .lbl{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
 .teamrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -170,7 +180,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .overlay{position:fixed;inset:0;background:rgba(28,25,23,.4);z-index:20;overflow:auto;
   padding:calc(env(safe-area-inset-top,0px) + 16px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px))}
 .overlay .card{max-width:480px;margin:0 auto;background:#fff}
-.overlay ul{margin:0;padding-left:20px;font-weight:400;display:flex;flex-direction:column;gap:6px}
+.overlay ul{margin:0;padding-left:20px;font-weight:500;display:flex;flex-direction:column;gap:6px}
 .tag{font-size:.65rem;color:var(--a);border:1px solid var(--a);border-radius:4px;padding:0 4px;margin-left:4px;font-weight:600}
 #fx{position:fixed;inset:0;pointer-events:none;z-index:30;width:100%;height:100%}
 .code{font-family:var(--f-d);font-weight:700;font-size:clamp(3.2rem,17vw,4.6rem);letter-spacing:.16em;line-height:1;color:var(--a)}
@@ -186,7 +196,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--a);outline-offs
 .daily-cta:active{background:var(--paper)}
 .drow{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:var(--card);font-weight:600;text-align:left;width:100%;box-sizing:border-box}
 .drow.no span{color:var(--bad)} .drow.ok{background:#e8f7ee} .drow.ok span{color:var(--good)}
-.hint{padding:8px 14px;border-radius:12px;background:var(--paper);color:var(--ink);font-weight:500;width:100%;box-sizing:border-box;text-align:left;letter-spacing:.02em}
+.hint{padding:8px 14px;border-radius:12px;background:var(--paper);color:var(--ink);font-weight:600;width:100%;box-sizing:border-box;text-align:left;letter-spacing:.02em}
 .fbw{display:flex;flex-wrap:wrap;gap:6px;flex:1}
 .fbw i,.legend i{font-style:normal;padding:3px 9px;border-radius:8px;font-weight:600}
 .fb-g{background:var(--good);color:#fff} .fb-y{background:#f5b400;color:#1c1917} .fb-n{background:#ffd9bf;color:#1c1917} .fb-x{background:#e7e2dd;color:var(--dim)}
@@ -524,7 +534,7 @@ function topbar(){
 let quitArmed=false;
 // "Free" screens can be left at any time. Leaving an active game asks first (menu, tap twice to quit).
 const freeScreen = () => ["title","setup","daily","solo"].includes(S.screen) || (S.screen==="online" && !O.code);
-const logoHTML = () => `<button class="logo" id="homeBtn" aria-label="${S.screen==="title"?"BackWords":"Back to the home screen"}">${S.screen==="title"?"":`<span class="bk" aria-hidden="true">‹</span>`}<span>Back</span><span class="w">Words</span></button>`;
+const logoHTML = () => `<button class="logo" id="homeBtn" aria-label="${S.screen==="title"?"BackSlang":"Back to the home screen"}">${S.screen==="title"?"":`<span class="bk" aria-hidden="true">‹</span>`}<span>Back</span><span class="w">Slang</span></button>`;
 function helpHTML(){
   if(S.screen==="daily") return `<ul><li>One word a day, the same for everyone. A new one comes at midnight New York time.</li>
       <li>Listen to it backward as often as you like. Slow it down if it helps.</li>
@@ -619,9 +629,9 @@ function afterBet(){
 
 const VIEWS = {
   title(){
-    return { cls:"center", html:`<div class="title"><h1 class="huge">BackWords</h1><h1 class="huge mirror" aria-hidden="true">BackWords</h1></div>
+    return { cls:"center", html:`<div class="title"><h1 class="huge">BackSlang</h1><h1 class="huge mirror" aria-hidden="true">BackSlang</h1></div>
       <span class="chip" id="wcount" style="${WORD_COUNT?"":"visibility:hidden"}">${WORD_COUNT?WORD_COUNT.toLocaleString():"0,000"} words and phrases</span><p class="dim" style="max-width:22em">Say it. Hear it backward. Say <i>that</i>. Your teammate hears it flipped and has to guess.</p>
-      ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKWORD</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
+      ${ONLINE_OK?`<button class="btn daily-cta" id="daily">DAILY BACKSLANG</button><button class="btn ghost" id="solo">1 player · free play</button><button class="btn" id="playOnline">PLAY ON EVERYONE'S PHONE</button><button class="btn ghost" id="play">Pass one phone around</button>`:`<button class="btn" id="play">PLAY</button>`}`,
       bind(){ $("play").onclick=()=>{ ac(); SFX.go(); ensureMic(); go("setup"); };
         if($("daily")) $("daily").onclick=()=>{ ac(); SFX.go(); openDaily(); };
         if($("solo")) $("solo").onclick=()=>{ ac(); SFX.go(); openSolo(); };
@@ -805,7 +815,7 @@ function finish(correct){
 }
 
 
-// ---------- Daily BackWord: one word a day, same for everyone ----------
+// ---------- Daily BackSlang: one word a day, same for everyone ----------
 const D = { speed:(()=>{ try{ const v=+localStorage.getItem("bw-speed2"); return [1,0.7,0.5].includes(v)?v:0.7; }catch(e){ return 0.7; } })(), info:null, rev:null, fwd:null, err:"", loading:false, busy:false, draft:"", local:{}, listens:0, copied:false };
 const DKEY="bw-daily", DSTATS="bw-daily-stats";
 const dload = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) || d; }catch(e){ return d; } };
@@ -867,12 +877,12 @@ async function dailyGuess(text){
 }
 function shareText(st){
   const sq = st.guesses.map(g=>g.ok?"🟩":"🟥").join("");
-  return `BackWords Daily #${D.info.n} ${st.won?st.guesses.length:"X"}/${D.info.maxGuesses}\n${sq}  🔁${st.listens||D.listens}\n${location.origin}`;
+  return `BackSlang Daily #${D.info.n} ${st.won?st.guesses.length:"X"}/${D.info.maxGuesses}\n${sq}  🔁${st.listens||D.listens}\n${location.origin}`;
 }
 
 VIEWS.daily = function(){
-  if(D.loading || (!D.info && !D.err)) return { cls:"center", key:"load", html:`<span class="kicker">Daily BackWord</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
-  if(D.err && !D.rev) return { cls:"center", key:"err", html:`<span class="kicker">Daily BackWord</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
+  if(D.loading || (!D.info && !D.err)) return { cls:"center", key:"load", html:`<span class="kicker">Daily BackSlang</span><h2 class="big-t">Loading today's word…</h2><div class="dots"><i></i><i></i><i></i></div>` };
+  if(D.err && !D.rev) return { cls:"center", key:"err", html:`<span class="kicker">Daily BackSlang</span><p class="err">${esc(D.err)}</p><button class="btn" id="retry">TRY AGAIN</button><button class="link" id="home">Back</button>`,
     bind(){ $("retry").onclick=()=>{ D.info=null; openDaily(); }; $("home").onclick=()=>go("title"); } };
   const st=dstate(), max=D.info.maxGuesses, left=max-st.guesses.length;
   if(!st.listens && D.listens) st.listens=D.listens;
@@ -882,7 +892,7 @@ VIEWS.daily = function(){
   const hints = st.hints.map(h=>`<div class="hint">💡 ${esc(h)}</div>`).join("");
   if(st.over){
     const s=dstats();
-    return { cls:"center", key:"over", html:`<span class="kicker">Daily BackWord #${D.info.n}</span>
+    return { cls:"center", key:"over", html:`<span class="kicker">Daily BackSlang #${D.info.n}</span>
       <h2 class="big-t">${st.won?(st.guesses.length===1?"First try!":"Got it!"):"Not today"}</h2>
       <div class="word sm">${esc(st.word)}</div>
       <div class="lrow"><button class="play sm" id="fwd" aria-label="Play forward">${ICON.play}</button><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button></div>
@@ -900,7 +910,7 @@ VIEWS.daily = function(){
       } };
   }
   const L=D.local, mine=L.mine;
-  return { cls:"center", html:`<span class="kicker">Daily BackWord #${D.info.n} · ${esc(D.info.cat)}</span>
+  return { cls:"center", html:`<span class="kicker">Daily BackSlang #${D.info.n} · ${esc(D.info.cat)}</span>
     <div class="lrow"><button class="play sm" id="pl" aria-label="Play backward">${ICON.rew}</button><p class="dim">Today's word, played backward. Listen as much as you want.</p></div>
     ${speedSeg()}
     <div class="row" style="gap:10px"><button class="btn ghost" id="rec">${activeRec?"■ Stop":"🎙 Say it back"}</button><button class="btn ghost" id="flip" ${mine?"":"disabled"}>🔄 Flip mine</button></div>
@@ -1185,7 +1195,7 @@ const ONLINE_VIEWS = {
       :`<div class="card center"><p class="dim">${esc(oname(s.hostId))} is setting up: ${st.mode==="points"?"Points":"Casual"} · ${esc(st.category)} · ${st.source==="opponent"?"other team picks":"random words"}</p></div>${waitCard("Waiting for the host","")}`}`,
       bind(){
         document.querySelectorAll("[data-team]").forEach(b=>b.onclick=()=>{ SFX.tap(); send({type:"team",team:+b.dataset.team}); });
-        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"BackWords",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
+        $("share").onclick=async()=>{ try{ if(navigator.share){ await navigator.share({title:"BackSlang",text:"Join my game. Room code "+O.code,url:link}); return; } }catch(e){ return; }
           try{ await navigator.clipboard.writeText(link); $("share").textContent="Link copied"; }catch(e){ $("share").textContent=link; } };
         if(host){
           const set=x=>send({type:"settings",settings:Object.assign({},st,x)});
