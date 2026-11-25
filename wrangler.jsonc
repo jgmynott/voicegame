@@ -14,5 +14,6 @@
     "bindings": [{ "name": "ROOM", "class_name": "Room" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "ai": { "binding": "AI" },
   "observability": { "enabled": true }
 }
