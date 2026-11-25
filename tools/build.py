@@ -42,7 +42,10 @@ random.seed(7)
 # Recognizable things only: real names, places, titles, brands and plain nouns.
 # No adjective + noun combos, and no syllable limit (every entry is kept, filed by syllable count).
 from lists2 import PEOPLE as FAMOUS, CHARACTERS, MOVIES_TV, BRANDS, PLACES_EXTRA, SPORTS
-CATS_ORDER = ["Places", "People", "Characters", "Movies & TV", "Brands", "Sports", "Animals", "Food", "Things", "Sayings"]
+from lists3 import (SPORTS_MORE, MUSIC, VIDEO_GAMES, NATURE, BODY, CLOTHING, VEHICLES, HOLIDAYS, TOYS_GAMES,
+                    ANIMALS_MORE, FOOD_MORE, THINGS_MORE, PLACES_MORE, MOVIES_MORE, CHARACTERS_MORE)
+CATS_ORDER = ["Places", "People", "Characters", "Movies & TV", "Music", "Brands", "Sports", "Video Games", "Animals", "Food",
+              "Things", "Nature", "Body", "Clothing", "Vehicles", "Holidays", "Toys & Games", "Sayings"]
 out = {c: {} for c in CATS_ORDER}
 dropped = []; seen = set()
 VOW = re.compile(r"[aeiouy]+")
@@ -76,9 +79,17 @@ for p in BRANDS.split("|"): add("Brands", p)
 for p in SPORTS.split("|"): add("Sports", p)
 for p in PLACES_EXTRA.split("|"): add("Places", p)
 for p in LANDMARKS.split("|"): add("Places", p)
+# 2026-11-25 expansion (lists3.py). The specific new categories go first, so nouns like guitar, helicopter
+# or sweater move out of Things into Music, Vehicles or Clothing. Everything else keeps its category.
+for cat, src in [("Music", MUSIC), ("Video Games", VIDEO_GAMES), ("Nature", NATURE), ("Body", BODY), ("Clothing", CLOTHING),
+                 ("Vehicles", VEHICLES), ("Holidays", HOLIDAYS), ("Toys & Games", TOYS_GAMES)]:
+    for p in src.split("|"): add(cat, p)
 for n_ in items(ANIMALS): add("Animals", n_)
 for n_ in items(FOODS): add("Food", n_)
 for n_ in items(THINGS): add("Things", n_)
+for cat, src in [("Sports", SPORTS_MORE), ("Characters", CHARACTERS_MORE), ("Movies & TV", MOVIES_MORE), ("Places", PLACES_MORE),
+                 ("Animals", ANIMALS_MORE), ("Food", FOOD_MORE), ("Things", THINGS_MORE)]:
+    for p in src.split("|"): add(cat, p)
 
 g = geonamescache.GeonamesCache()
 ascii_ok = lambda s: re.fullmatch(r"[A-Za-z .'\-]+", s) is not None
