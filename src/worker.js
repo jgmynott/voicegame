@@ -179,7 +179,7 @@ const clean = (s, max) => String(s ?? "").replace(/[\u0000-\u001f]/g, "").trim()
 function freshState(code) {
   return {
     code, hostId: null, players: {}, order: [],
-    settings: { mode: "points", source: "opponent", category: "Places", guesserPlays: 2, speakerPlays: 2, rounds: 4 },
+    settings: { mode: "points", source: "opponent", category: "Places", difficulty: "normal", guesserPlays: 2, speakerPlays: 2, rounds: 4 },
     teamNames: ["Red", "Blue"], scores: [0, 0], turns: [0, 0],
     phase: "lobby", round: 1, turnTeam: 0, turn: null, history: [], used: [], clipVer: 0
   };
@@ -237,10 +237,22 @@ export class Room extends DurableObject {
     for (const [cat, levels] of Object.entries(data)) { bank[cat] = []; for (const [n, arr] of Object.entries(levels)) for (const w of arr) bank[cat].push([w, +n]); }
     return (this.words = bank);
   }
+  // Easy and Hard word sets (docs/levels.json, built by tools/levels.py). Normal uses every word.
+  async loadLevels() {
+    if (this.levels) return this.levels;
+    try {
+      const r = await this.env.ASSETS.fetch(new Request("https://assets.local/levels.json"));
+      const j = await r.json();
+      this.levels = { easy: new Set(j.easy), hard: new Set(j.hard) };
+    } catch (e) { this.levels = {}; }
+    return this.levels;
+  }
   async draw(cat, level) {
     const bank = await this.loadWords();
     let list = (bank[cat] || []).filter(([, n]) => level == null || n === level);
     if (!list.length) list = Object.values(bank).flat().filter(([, n]) => level == null || n === level);
+    const set = (await this.loadLevels())[this.s.settings.difficulty];
+    if (set) { const f = list.filter(([w]) => set.has(w.toLowerCase())); if (f.length) list = f; }
     const used = new Set(this.s.used);
     let pool = list.filter(([w]) => !used.has(w)); if (!pool.length) pool = list;
     const [w, n] = pool[Math.floor(Math.random() * pool.length)];
@@ -313,6 +325,7 @@ export class Room extends DurableObject {
           if (["points", "casual"].includes(x.mode)) st.mode = x.mode;
           if (["opponent", "random"].includes(x.source)) st.source = x.source;
           if (typeof x.category === "string") st.category = clean(x.category, 20);
+          if (["easy", "normal", "hard"].includes(x.difficulty)) st.difficulty = x.difficulty;
           if ([0, 1, 2, 3].includes(x.guesserPlays)) st.guesserPlays = x.guesserPlays;
           if ([2, 4, 6, 8].includes(x.rounds)) st.rounds = x.rounds;
           break;
